@@ -1,0 +1,15 @@
+originals/
+game/.godot/
+game/build/
+build/
+__pycache__/
+*.pyc
+*.keystore
+*.jks
+analysis/nested-map/
+
+/art/
+/game/art/
+/data/
+/game/data/
+/analysis/

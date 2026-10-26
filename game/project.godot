@@ -1,0 +1,30 @@
+; RedMoon offline reconstruction prototype. Requires Godot 4.5.x.
+config_version=5
+
+[application]
+config/name="RedMoon Offline Prototype"
+run/main_scene="res://main.tscn"
+config/features=PackedStringArray("4.5", "GL Compatibility")
+config/description="Offline reconstruction prototype using recovered server map and spawn data. Placeholder graphics and provisional gameplay rules."
+
+[display]
+window/size/viewport_width=1280
+window/size/viewport_height=720
+window/size/window_width_override=1280
+window/size/window_height_override=720
+window/stretch/mode="canvas_items"
+window/handheld/orientation=0
+
+[input_devices]
+pointing/emulate_touch_from_mouse=false
+pointing/emulate_mouse_from_touch=true
+
+[rendering]
+renderer/rendering_method="gl_compatibility"
+renderer/rendering_method.mobile="gl_compatibility"
+textures/default_filters/use_nearest_mipmap_filter=false
+textures/vram_compression/import_etc2_astc=true
+environment/defaults/default_clear_color=Color(0.027, 0.039, 0.059, 1)
+
+[audio]
+driver/enable_input=false

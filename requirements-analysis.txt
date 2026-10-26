@@ -1,0 +1,5 @@
+pefile==2024.8.26
+capstone==5.0.7
+
+Pillow>=10
+numpy>=1.26
