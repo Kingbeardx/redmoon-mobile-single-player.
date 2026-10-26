@@ -11,7 +11,10 @@ func run() -> void:
 	root.add_child(scene)
 	await process_frame
 	scene.set_process(false)
-	check(scene.ready_world and scene.art.get("actors",{}).size() == 58, "client art and world loaded")
+	scene.toggle_music()
+	check(scene.music != null and scene.music.playing,"music toggle plays original client composition")
+	scene.toggle_music()
+	check(scene.ready_world and scene.art.get("actors",{}).size() >= 58, "client art and world loaded")
 	var start: Vector2 = scene.world.player
 	for i in range(60):
 		scene.world.tick(1.0/60,Vector2.RIGHT)
@@ -38,5 +41,5 @@ func run() -> void:
 	await process_frame
 	await RenderingServer.frame_post_draw
 	root.get_texture().get_image().save_png("/workspace/redmoon-mobile/analysis/end-to-end.png")
-	print("END TO END: 5 checks, ", failures," failures")
+	print("END TO END: 6 checks, ", failures," failures")
 	quit(1 if failures else 0)

@@ -1,0 +1,17 @@
+{
+  "repository": "https://github.com/cjschneider2/novluno",
+  "branches": {
+    "master": {
+      "commit": "3fca48491e823560a21f3725816814b62f14389e",
+      "source_files": 101
+    },
+    "bevy": {
+      "commit": "c220f43086143feecf9dcdad243692389af66290",
+      "source_files": 134
+    },
+    "new_client": {
+      "commit": "daf598143324640fe3c6d12a7ed590bcce7685b3",
+      "source_files": 114
+    }
+  }
+}

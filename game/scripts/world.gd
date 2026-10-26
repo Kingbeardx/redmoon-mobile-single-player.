@@ -17,7 +17,13 @@ var character_id: int = 1
 var mana: int = 50
 var bounty_claimed: bool = false
 var motion: Vector2 = Vector2.ZERO
+var facing: int = 6
+var running: bool = false
+var navigation: AStarGrid2D
+var exits: Dictionary = {}
+var exit_marker_cache: Dictionary = {}
 var shop_available: bool = false
+var purchases: Dictionary = {}
 var item_tables: Dictionary = {}
 var catalog: Array = []
 var content: Dictionary = {}
@@ -54,6 +60,9 @@ func read_json(path: String) -> Variant:
 
 func initialize(root: String = "res://data") -> bool:
 	data_root = root
+	var portal_data = read_json(data_root + "/client-events.json")
+	if portal_data is Dictionary:
+		exits = portal_data
 	var binary = read_json(data_root + "/binary-content.json")
 	if binary is Dictionary:
 		for table in binary.get("tables", []):
@@ -108,6 +117,14 @@ func enter_map(id: int, keep_current: bool = true) -> bool:
 	width = w
 	height = h
 	walkable = cells
+	navigation = AStarGrid2D.new()
+	navigation.region = Rect2i(0,0,width,height)
+	navigation.diagonal_mode = AStarGrid2D.DIAGONAL_MODE_NEVER
+	navigation.update()
+	for y in range(height):
+		for x in range(width):
+			if not is_open(Vector2i(x,y)):
+				navigation.set_point_solid(Vector2i(x,y))
 	player = find_start(decoded.get("start", entry.get("start", [w / 2, h / 2])))
 	enemies = []
 	if map_states.has(str(id)):
@@ -191,10 +208,12 @@ func tick(delta: float, direction: Vector2) -> void:
 	var dt: float = clampf(delta, 0.0, 0.1)
 	elapsed += dt
 	motion = direction
+	if direction.length_squared() > 0.001:
+		facing = facing_for(direction)
 	attack_cooldown = maxf(0.0, attack_cooldown - dt)
 	attack_flash = maxf(0.0, attack_flash - dt)
 	if direction.length_squared() > 0.001:
-		player = move_entity(player, direction.limit_length(1.0) * MOVE_SPEED * dt)
+		player = move_entity(player, direction.limit_length(1.0) * MOVE_SPEED * (1.6 if running else 1.0) * dt)
 	for enemy in enemies:
 		if not bool(enemy.get("alive", false)):
 			enemy["respawn_timer"] = maxf(0, float(enemy.get("respawn_timer",60)) - dt)
@@ -203,13 +222,29 @@ func tick(delta: float, direction: Vector2) -> void:
 				enemy["hp"] = 36
 			continue
 		var position := Vector2(float(enemy["x"]), float(enemy["y"]))
+		enemy["moving"] = false
 		var distance: float = position.distance_to(player)
 		enemy["cooldown"] = maxf(0.0, float(enemy["cooldown"]) - dt)
 		if distance < 8.0 and distance > 1.35:
-			position = move_entity(position, position.direction_to(player) * 1.1 * dt)
+			var toward: Vector2 = position.direction_to(player)
+			var moved: Vector2 = move_entity(position,toward * 1.1 * dt)
+			if not clear_sight(position,player) and navigation != null:
+				enemy["nav_cooldown"] = maxf(0,float(enemy.get("nav_cooldown",0))-dt)
+				if float(enemy["nav_cooldown"]) <= 0:
+					var path: Array[Vector2i] = navigation.get_id_path(Vector2i(position.floor()),Vector2i(player.floor()))
+					if path.size()>1:
+						enemy["nav_x"] = path[1].x+0.5
+						enemy["nav_y"] = path[1].y+0.5
+					enemy["nav_cooldown"] = 0.5
+				var next := Vector2(float(enemy.get("nav_x",position.x)),float(enemy.get("nav_y",position.y)))
+				toward = position.direction_to(next)
+				moved = move_entity(position,toward*1.1*dt)
+			position = moved
+			enemy["facing"] = facing_for(toward)
+			enemy["moving"] = true
 			enemy["x"] = position.x
 			enemy["y"] = position.y
-		elif distance <= 1.6 and float(enemy["cooldown"]) <= 0.0:
+		elif distance <= 1.6 and float(enemy["cooldown"]) <= 0.0 and clear_sight(position,player):
 			hp = maxi(0, hp - maxi(1,4 - armor_bonus))
 			enemy["cooldown"] = 1.4
 	if hp <= 0:
@@ -242,7 +277,7 @@ func attack() -> bool:
 		if not bool(enemy.get("alive", false)):
 			continue
 		var distance: float = player.distance_to(Vector2(float(enemy["x"]), float(enemy["y"])))
-		if distance < best:
+		if distance < best and clear_sight(player,Vector2(float(enemy["x"]),float(enemy["y"]))):
 			best = distance
 			target = enemy
 	if target.is_empty():
@@ -306,7 +341,7 @@ func restore_map_state(state: Dictionary) -> void:
 
 func save_game(path: String = "user://progress.json") -> Error:
 	remember_map()
-	var record: Dictionary = {"version": SAVE_VERSION, "map_id": map_id, "hp": hp, "xp": xp, "level": level, "potions": potions, "defeated": defeated, "map_states": map_states, "armor_bonus":armor_bonus,"gold":gold,"inventory":inventory,"weapon_bonus":weapon_bonus,"character_id":character_id,"mana":mana,"bounty_claimed":bounty_claimed}
+	var record: Dictionary = {"version": SAVE_VERSION, "map_id": map_id, "hp": hp, "xp": xp, "level": level, "potions": potions, "defeated": defeated, "map_states": map_states, "purchases":purchases,"facing":facing,"armor_bonus":armor_bonus,"gold":gold,"inventory":inventory,"weapon_bonus":weapon_bonus,"character_id":character_id,"mana":mana,"bounty_claimed":bounty_claimed}
 	var temporary: String = path + ".tmp"
 	var file := FileAccess.open(temporary, FileAccess.WRITE)
 	if file == null:
@@ -314,6 +349,8 @@ func save_game(path: String = "user://progress.json") -> Error:
 	file.store_string(JSON.stringify(record))
 	file.flush()
 	file.close()
+	if FileAccess.file_exists(path) and valid_save(read_json(path)):
+		DirAccess.copy_absolute(path,path+".bak")
 	var result: Error = DirAccess.rename_absolute(temporary, path)
 	if result == OK:
 		message = "Progress saved on this device."
@@ -322,7 +359,9 @@ func save_game(path: String = "user://progress.json") -> Error:
 func load_game(path: String = "user://progress.json") -> bool:
 	var saved: Variant = read_json(path)
 	if not valid_save(saved):
-		return false
+		saved = read_json(path+".bak")
+		if not valid_save(saved):
+			return false
 	var prior_states: Dictionary = map_states
 	map_states = saved["map_states"]
 	if not enter_map(int(saved.get("map_id", -1)), false):
@@ -336,11 +375,17 @@ func load_game(path: String = "user://progress.json") -> bool:
 	armor_bonus = clampi(int(saved.get("armor_bonus",0)),0,3)
 	gold = clampi(int(saved.get("gold",0)),0,99999999)
 	weapon_bonus = clampi(int(saved.get("weapon_bonus",0)),0,50)
-	character_id = clampi(int(saved.get("character_id",1)),1,9)
+	character_id = clampi(int(saved.get("character_id",1)),0,9)
 	mana = clampi(int(saved.get("mana",50)),0,50)
 	bounty_claimed = bool(saved.get("bounty_claimed",false))
 	if saved.get("inventory",{}) is Dictionary:
 		inventory = saved.get("inventory",{}).duplicate()
+		for key in inventory:
+			inventory[key] = int(inventory[key])
+	purchases = saved.get("purchases",{}).duplicate()
+	for key in purchases:
+		purchases[key] = int(purchases[key])
+	facing = int(saved.get("facing",6))
 	message = "Local progress restored."
 	return true
 
@@ -353,6 +398,16 @@ func valid_save(saved: Variant) -> bool:
 	for key in ["map_id", "hp", "xp", "level", "potions", "defeated"]:
 		if not valid_number(saved.get(key)):
 			return false
+	for key in ["gold","armor_bonus","weapon_bonus","character_id","mana","facing"]:
+		if saved.has(key) and not valid_number(saved[key]):
+			return false
+	for key in ["inventory","purchases"]:
+		var bag: Variant = saved.get(key,{})
+		if not bag is Dictionary or bag.size()>10000:
+			return false
+		for value in bag.values():
+			if not valid_number(value) or float(value)<0 or float(value)>4000000001:
+				return false
 	var states: Variant = saved.get("map_states")
 	if not states is Dictionary or states.size() > catalog.size():
 		return false
@@ -381,6 +436,7 @@ func reset_progress(path: String = "user://progress.json") -> void:
 	map_states = {}
 	gold = 0
 	inventory = {}
+	purchases = {}
 	weapon_bonus = 0
 	armor_bonus = 0
 	bounty_claimed = false
@@ -467,3 +523,83 @@ func claim_bounty() -> void:
 		save_game()
 	else:
 		message = "Bounty requires 10 defeats and can be claimed once."
+
+func facing_for(direction: Vector2) -> int:
+	var x: int = int(signf(direction.x)) if absf(direction.x)>0.2 else 0
+	var y: int = int(signf(direction.y)) if absf(direction.y)>0.2 else 0
+	if x==0 and y==0:
+		return facing
+	return 5+x-y*3
+
+func clear_sight(start: Vector2, finish: Vector2) -> bool:
+	var steps: int = maxi(1,int(ceil(start.distance_to(finish)*4)))
+	for i in range(steps+1):
+		if not is_open(Vector2i(start.lerp(finish,float(i)/steps).floor())):
+			return false
+	return true
+
+func use_exit() -> bool:
+	var pixel: Vector2 = player*Vector2(48,24)
+	for exit in exits.get(str(map_id),[]):
+		var rect := Rect2(float(exit["left"]),float(exit["top"]),float(exit["right"])-float(exit["left"]),float(exit["bottom"])-float(exit["top"]))
+		if not rect.grow(48).has_point(pixel):
+			continue
+		for event in content.get("events",[]):
+			if int(event.get("map_id",-1)) != map_id or int(event.get("id",-1)) != int(exit["id"]) or int(event.get("type",-1)) != 1:
+				continue
+			var args: Array = event.get("args",[])
+			if args.size()<4:
+				continue
+			if enter_map(int(args[0])):
+				player = find_start([int(args[1]),int(args[2])])
+				message = "Travelled through the recovered map exit."
+				save_game()
+				return true
+	message = "No supported exit nearby. Blue EXIT markers identify client event locations."
+	return false
+
+func zone_stock() -> Array:
+	var shop_ids: Dictionary = {}
+	for link in content.get("map_shops",[]):
+		if int(link.get("map_id",-1))==map_id:
+			shop_ids[int(link["shop_id"])]=true
+	var stock: Array = []
+	for item in content.get("shops",[]):
+		if not shop_ids.has(int(item["shop_id"])) or int(item["kind"]) not in [1,2,3,4]:
+			continue
+		var key: String = "%d:%d" % [item["kind"],item["index"]]
+		var purchase_key: String = "%d:%s" % [item["shop_id"],key]
+		if int(item["count"])<=int(purchases.get(purchase_key,0)):
+			continue
+		var base: int = 100 if int(item["kind"])==1 else (80 if int(item["kind"]) in [2,3] else 10)
+		stock.append({"key":key,"purchase_key":purchase_key,"name":item_name(key),"price":maxi(1,int(base*int(item["price_percent"])/100)),"count":int(item["count"])})
+	return stock
+
+func buy_stock(purchase_key: String) -> bool:
+	for item in zone_stock():
+		if item["purchase_key"]!=purchase_key:
+			continue
+		if gold<int(item["price"]):
+			message = "Not enough gold."
+			return false
+		gold-=int(item["price"])
+		inventory[item["key"]]=int(inventory.get(item["key"],0))+1
+		purchases[purchase_key]=int(purchases.get(purchase_key,0))+1
+		message = "Bought "+str(item["name"])
+		save_game()
+		return true
+	return false
+
+func map_exit_rectangles() -> Array:
+	if exit_marker_cache.has(map_id):
+		return exit_marker_cache[map_id]
+	var ids: Dictionary={}
+	for event in content.get("events",[]):
+		if int(event.get("map_id",-1))==map_id and int(event["type"])==1:
+			ids[int(event["id"])]=true
+	var markers: Array=[]
+	for rect in exits.get(str(map_id),[]):
+		if ids.has(int(rect["id"])):
+			markers.append(rect)
+	exit_marker_cache[map_id]=markers
+	return markers

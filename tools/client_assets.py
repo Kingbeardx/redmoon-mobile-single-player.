@@ -19,7 +19,7 @@ class Reader:
   return self.take(n)
 class Converter:
  def __init__(self,root,out):
-  self.root=root;self.out=out;out.mkdir(parents=True,exist_ok=True);self.paths={p.relative_to(root).as_posix().lower():p for p in root.rglob('*') if p.is_file()};self.meta={};self.issues=[]
+  self.root=root;self.out=out;out.mkdir(parents=True,exist_ok=True);self.paths={p.relative_to(root).as_posix().lower():p for p in root.rglob('*') if p.is_file()};self.meta={};self.issues=[];self.rmd_info={};self.skipped_layers=0
  def path(self,p):return self.paths[p.lower()]
  @lru_cache(None)
  def lst(self,kind):
@@ -55,7 +55,7 @@ class Converter:
   return Image.fromarray(arr.reshape(h,w,4)),ox,oy
  @lru_cache(None)
  def rmd(self,kind,num):
-  r=Reader(self.path(f'DATAs/{kind}/{kind.lower()}{num:05d}.rmd').read_bytes());r.s();r.ints(3);r.s();r.ints(2);r.s();count=r.ints()[0];rows=[]
+  r=Reader(self.path(f'DATAs/{kind}/{kind.lower()}{num:05d}.rmd').read_bytes());r.s();r.ints(3);r.s();parts,stride=r.ints(2);self.rmd_info[(kind,num)]={"parts":parts,"stride":stride};r.s();count=r.ints()[0];rows=[]
   for _ in range(count):
    layers=[]
    for j in range(r.ints()[0]):
@@ -68,13 +68,23 @@ class Converter:
  def compose(self,kind,num,idx):
   key=f'{kind.lower()}_{num}_{idx}'
   if key in self.meta:return key
-  rows,_=self.rmd(kind,num);layers=rows[idx];parts=[]
+  rows,_=self.rmd(kind,num)
+  # novluno bevy c220f430: field 6 is render_z (field 9 is a layer/blend flag).
+  layers=sorted(rows[idx],key=lambda layer:layer[0][5]);parts=[]
   for v,ids in layers:
    if not ids:continue
-   lstkind=kind.lower() if kind!='Chr' else (f'Chr/c{num-1:02d}' if 1 <= num <= 9 else 'Chr/etc')
+   if v[2] <= v[0] or v[3] <= v[1]:
+    self.skipped_layers+=1;continue
+   lstkind=kind.lower() if kind!='Chr' else (f'Chr/c{num:02d}' if 0 <= num <= 9 else 'Chr/etc')
    im,ox,oy=self.sprite(lstkind,ids[0]);x1,y1,x2,y2=v[:4];dx,dy=v[6:8]
    if kind=='Tle':crop=im.crop((x1,y1,x2,y2)).resize((48,24));dx=dy=0
-   else:crop=im.crop((x1-ox,y1-oy,x2-ox,y2-oy))
+   else:
+    sx,sy=x1-ox,y1-oy;ex,ey=x2-ox,y2-oy
+    cx,cy=max(0,sx),max(0,sy);cex,cey=min(im.width,ex),min(im.height,ey)
+    if cex<=cx or cey<=cy:continue
+    crop=im.crop((cx,cy,cex,cey));dx+=cx-sx;dy+=cy-sy
+    if kind=='Chr' and v[8]==2:
+     crop.putalpha(crop.getchannel('A').point(lambda a:a//2))
    if crop.width and crop.height:parts.append((crop,dx,dy))
   if not parts:raise ValueError('empty row')
   left=min(x for im,x,y in parts);top=min(y for im,x,y in parts);right=max(x+im.width for im,x,y in parts);bottom=max(y+im.height for im,x,y in parts)
@@ -83,7 +93,7 @@ class Converter:
   for im,x,y in parts:canvas.alpha_composite(im,(x-left,y-top))
   canvas.save(self.out/(key+'.pngdata'), format='PNG');self.meta[key]=[left,top,right-left,bottom-top];return key
  def run(self,game):
-  maps={};actors={}
+  maps={};actors={};actor_states={};object_animations={}
   for p in sorted((self.root/'DATAs/Map').glob('*.rmm')):
    try:
     r=Reader(p.read_bytes());r.s();w,h=r.ints(2);r.s();id,n=r.ints(2);r.take(n*18);cells=[]
@@ -96,20 +106,40 @@ class Converter:
       except Exception as ex:self.issues.append(f'{kind}/{num}/{idx}: {ex}')
     maps[str(id)]={'width':w,'height':h,'cells':cells}
    except Exception as ex:self.issues.append(f'{p.name}: {ex}')
-  content=json.loads((game/'data/content.json').read_text());appearances=set(range(1,10))|{m['appearance_id'] for m in content['monsters']}
+  # novluno bevy map_spawn::anim_entry_indices: base + stride * frame.
+  for key in list(self.meta):
+   if not key.startswith('obj_'):continue
+   _,num,base=key.split('_');num=int(num);base=int(base)
+   rows,animations=self.rmd('Obj',num);stride=self.rmd_info[('Obj',num)]['stride']
+   frames=[]
+   for frame in animations[0] if animations else []:
+    index=base+stride*max(0,frame)
+    if not 0<=index<len(rows):continue
+    try:frames.append(self.compose('Obj',num,index))
+    except (ValueError,IndexError,KeyError):pass
+   if len(frames)>1:object_animations[key]=frames
+  content=json.loads((game/'data/content.json').read_text());appearances=set(range(10))|{m['appearance_id'] for m in content['monsters']}|{n['image_id'] for n in content.get('npcs',[])}
   for num in sorted(appearances):
    try:
-    rows,animations=self.rmd('Chr',num);seq=[a for a in animations if a];chosen=[list(range(min(len(rows),64)))];sequences=[]
-    for frames in chosen:
-     keys=[]
-     for idx in frames:
-      try:keys.append(self.compose('Chr',num,idx))
-      except Exception:pass
-     if keys:sequences.append(keys)
-    if sequences:actors[str(num)]=sequences
+    rows,animations=self.rmd('Chr',num);states={};allkeys=[]
+    for action,base in [('walk',0),('run',10),('idle',60)]:
+     directions={}
+     for direction in [1,2,3,4,6,7,8,9]:
+      index=base+direction;keys=[]
+      for frame in animations[index] if index<len(animations) else []:
+       if not 0<=frame<len(rows):continue
+       try:keys.append(self.compose('Chr',num,frame))
+       except (ValueError,IndexError,KeyError):pass
+      if keys:directions[str(direction)]=keys;allkeys.extend(keys)
+     if directions:states[action]=directions
+    if not allkeys:
+     for frame in range(min(len(rows),8)):
+      try:allkeys.append(self.compose('Chr',num,frame))
+      except (ValueError,IndexError,KeyError):pass
+    if allkeys:actors[str(num)]=[list(dict.fromkeys(allkeys))];actor_states[str(num)]=states
    except Exception as ex:self.issues.append(f'Chr/{num}: {ex}')
   (game/'data/client-maps.json').write_text(json.dumps(maps,separators=(',',':')))
-  (game/'data/client-art.json').write_text(json.dumps({'images':self.meta,'actors':actors,'issues':self.issues},separators=(',',':')))
+  (game/'data/client-art.json').write_text(json.dumps({'images':self.meta,'actors':actors,'actor_states':actor_states,'object_animations':object_animations,'skipped_nonpositive_layers':self.skipped_layers,'issues':self.issues},separators=(',',':')))
   print(json.dumps({'maps':len(maps),'images':len(self.meta),'actors':len(actors),'issues':len(self.issues),'examples':self.issues[:8]}))
 if __name__=='__main__':
  p=argparse.ArgumentParser();p.add_argument('client',type=Path);p.add_argument('--game',type=Path,default=Path('game'));a=p.parse_args();Converter(a.client,a.game/'art').run(a.game)

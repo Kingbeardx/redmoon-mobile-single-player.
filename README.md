@@ -15,7 +15,8 @@ Desktop controls: WASD/arrows, Space to attack, E to heal.
 
 - 196 server maps with collision, original terrain/object rendering where the
   matching client map is readable; converter recovers 252 client map files.
-- 50,660 composed client images and 58 animated appearances, including nine heroes.
+- 83,005 composed sprite entries, including directional hero/NPC animations;
+  identical image payloads are shared to reduce download size.
 - Touch movement and simultaneous attack; map selection and minimap.
 - Combat, a mana-powered attack, source-derived loot records, inventory, weapon
   and armor bonuses, food, healing purchases, item sales, progression and rewards.
@@ -27,12 +28,14 @@ Desktop controls: WASD/arrows, Space to attack, E to heal.
 
 Combat damage, item effects/prices, skill attack, XP thresholds and bounty are
 reconstruction rules, not verified original behavior. The server dataset is older
-than this client; some appearance IDs may refer to different artwork. Animation
-state/direction selection is partial. Terrain/object occlusion is approximate.
-3,512 unsupported/invalid conversion references are logged in client-art.json;
-missing references remain transparent or use fallback actors.
-Original class mechanics, quests, complete skills/equipment/effects, audio and
-multiplayer are unfinished. No working legacy service or validated multiplayer
+than this client; some appearance IDs may refer to different artwork. Walking/running/idle direction mapping now follows the retained Bevy source.
+Terrain/object depth sorting is improved but remains approximate.
+Unsupported references are retained in client-art.json; nonpositive source
+rectangles are skipped following upstream behavior. Missing references remain
+transparent or use fallback actors.
+Original class mechanics, quests, complete skills/equipment/effects and
+multiplayer are unfinished. Exact original attack animations and music-to-map
+assignments remain unverified. No working legacy service or validated multiplayer
 protocol is available in this project. The Windows binaries were never executed.
 Android was built and statically verified; no physical Android device was available.
 iOS export configuration remains available, but no iOS binary was compiled.
@@ -69,3 +72,39 @@ godot --headless --path game --script tests/adventure.gd
 `game/tests/end_to_end.gd` runs the rendered UI/gameplay/save flow with an active
 display. Tests that perform gameplay actions can write local prototype progress;
 use a separate test OS account/data directory for installed-player testing.
+
+## Retained upstream source
+
+`references/novluno/` contains source snapshots of master, bevy and new_client,
+with upstream licenses and exact commits in UPSTREAM.json. Third-party compiled
+libraries and game assets are excluded. The converter adopts bevy's corrected
+RMD render-depth field (field 6); field 9 is a separate layer/blend flag. Existing
+APKs are unchanged until their assets are regenerated and the game rebuilt.
+
+## Version 0.3
+
+- Original walk/run/idle animation sequences and keypad directions; hero RMD/list
+  pairing corrected to the upstream character index (0 through 9).
+- Animated objects, depth-sorted scenery and actors, original NPC appearances.
+- Named original attack/item/coin effects. Optional first client MIDI composition,
+  rendered with a replacement General MIDI soundfont; enable Music in BAG / TALK.
+- Wall-aware attacks, enemy navigation around obstacles, run toggle.
+- Client EXIT rectangles matched to source-documented map destinations. Use nearby
+  EXIT from BAG / TALK; unsupported event types are not executed.
+- Source-listed zone market stock with deliberately reconstructed offline prices.
+- Save backups/recovery and normalized persistent inventory/purchase counts.
+- Content-addressed image sharing and visibility-based texture-cache eviction.
+
+Asset regeneration after client_assets.py:
+
+```
+python3 tools/client_events.py /path/to/Redmoon
+python3 tools/client_sounds.py /path/to/Redmoon
+python3 tools/client_music.py /path/to/Redmoon/RLEs/Mid/Rm001.mid
+python3 tools/pack_art.py --archive /path/outside/game/unused-art
+```
+
+Music rendering requires Linux FluidSynth, a GM soundfont and ffmpeg. The generated
+art/audio remains outside Git. Version 0.3 is Android debug-signed with the same
+package and development key as the earlier build so an in-place upgrade should
+retain saves. No physical Android/iOS device testing has been performed.

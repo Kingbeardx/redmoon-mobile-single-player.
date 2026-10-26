@@ -5,11 +5,13 @@ import zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
 OUTPUT = ROOT / 'build/redmoon-mobile-source.zip'
-INCLUDE_DIRS = ('tools', 'tests', 'docs', 'data', 'game')
+INCLUDE_DIRS = ('tools', 'tests', 'docs', 'data', 'game', 'references')
 EVIDENCE = ('archive-manifest.json', 'pe-report.json', 'coff-symbols.json',
             'svMapServer-selected.asm', 'content-comparison.json',
-            'nested-map-manifest.json', 'prototype-preview.png', 'python-tests.log',
-            'game-tests.log', 'import.log', 'android-verification.json')
+            'nested-map-manifest.json', 'end-to-end.png', 'v03-python-tests.log',
+            'v03-game-tests.log', 'v03-adventure.log', 'v03-input.log',
+            'v03-features.log', 'v03-recovery.log', 'v03-end-to-end.log',
+            'v03-rules.log', 'v03-build.json', 'v03-packing.log')
 
 
 def main():

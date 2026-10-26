@@ -1,0 +1,13 @@
+[package]
+name = "rle2sqlite"
+version = "0.1.0"
+authors = ["C. Jeremiah Schneider <csjchneider2@gmail.com>"]
+
+[dependencies.core_compat]
+path = "../core_compat"
+
+[dependencies.rusqlite]
+version = "0.29"
+features = ["bundled", "blob"]
+
+[dependencies]

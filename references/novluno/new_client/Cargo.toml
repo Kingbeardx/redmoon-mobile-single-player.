@@ -1,0 +1,17 @@
+[workspace]
+members = [
+    "geometry",
+    "core_compat",
+    "client",
+    "client_new",
+    "server",
+    "data_converter",
+    "cp949",
+    # Experiments
+    #"experiments/client_amethyst",
+    #"experiments/rm_viewer"
+    #"experiments/rm_viewer_v2"
+]
+
+[profile.release]
+debug = true

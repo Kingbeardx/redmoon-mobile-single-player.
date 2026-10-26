@@ -12,6 +12,13 @@ const TEAL := Color(0.24, 0.79, 0.71)
 var art: Dictionary = {}
 var client_maps: Dictionary = {}
 var textures: Dictionary = {}
+var object_draws: Array = []
+var image_last_used: Dictionary = {}
+var draw_epoch: int = 0
+var sounds_enabled: bool = true
+var audio_players: Dictionary = {}
+var music: AudioStreamPlayer
+var music_enabled: bool = false
 var inventory_panel: PanelContainer
 var inventory_list: VBoxContainer
 
@@ -252,11 +259,14 @@ func _sync_map_selection() -> void:
 			break
 
 func _attack() -> void:
-	world.attack()
+	var prior: int = world.defeated
+	if world.attack():
+		play_sound("loot" if world.defeated>prior else "attack")
 	_update_ui()
 
 func _heal() -> void:
-	world.heal()
+	if world.heal():
+		play_sound("heal")
 	_update_ui()
 
 func _save() -> void:
@@ -267,7 +277,7 @@ func _save() -> void:
 func _update_ui() -> void:
 	if not ready_world:
 		return
-	stats.text = "LV %d     HP %d / %d     XP %d / %d" % [world.level, world.hp, world.PLAYER_HP, world.xp, world.level * 40]
+	stats.text = "LV %d     HP %d / %d     XP %d / %d     MP %d / 50     GOLD %d" % [world.level, world.hp, world.PLAYER_HP, world.xp, world.level * 40,world.mana,world.gold]
 	hp_bar.value = world.hp
 	location_label.text = "ZONE %05d     %d × %d     X %d   Y %d" % [world.map_id, world.width, world.height, int(world.player.x), int(world.player.y)]
 	status.text = world.message
@@ -280,6 +290,13 @@ func iso(point: Vector2) -> Vector2:
 func _draw() -> void:
 	if not ready_world:
 		return
+	draw_epoch+=1
+	if textures.size()>1024:
+		for cached in textures.keys():
+			if int(image_last_used.get(cached,0))<draw_epoch-1:
+				textures.erase(cached)
+				image_last_used.erase(cached)
+	object_draws.clear()
 	var viewport: Vector2 = get_viewport_rect().size
 	camera_origin = Vector2(viewport.x * 0.5, viewport.y * 0.47) - iso(world.player)
 	var center := Vector2i(world.player)
@@ -303,21 +320,29 @@ func _draw() -> void:
 				draw_line(polygon[1], polygon[2], Color(0.18, 0.23, 0.28, 0.4), 1.0)
 			elif (x + y) % 4 == 0:
 				draw_circle(point, 1.3, Color(0.13, 0.17, 0.21))
-	var entities: Array = []
+	var entities: Array = object_draws.duplicate()
 	for enemy in world.enemies:
 		if bool(enemy.get("alive", false)):
 			entities.append({"position": Vector2(float(enemy["x"]), float(enemy["y"])), "enemy": enemy, "player": false})
 	for npc in world.content.get("npcs", []):
 		if int(npc.get("map_id", -1)) == world.map_id:
 			var b: Dictionary = npc["bounds"]
-			entities.append({"position": Vector2((float(b["left"])+float(b["right"]))*0.5, (float(b["top"])+float(b["bottom"]))*0.5), "player": false, "enemy": {"npc":true,"monster_id":0}})
+			entities.append({"position": Vector2((float(b["left"])+float(b["right"]))*0.5, (float(b["top"])+float(b["bottom"]))*0.5), "player": false, "enemy": {"npc":true,"monster_id":0,"appearance":int(npc["image_id"])}})
+	for exit in world.map_exit_rectangles():
+		entities.append({"position":Vector2((float(exit["left"])+float(exit["right"]))/96.0,(float(exit["top"])+float(exit["bottom"]))/48.0),"player":false,"exit":true})
 	entities.append({"position": world.player, "player": true})
-	entities.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return a["position"].x + a["position"].y < b["position"].x + b["position"].y)
+	entities.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return a["position"].y < b["position"].y)
 	for entry in entities:
 		var point: Vector2 = iso(entry["position"]) + camera_origin
 		if point.x < -40 or point.x > viewport.x + 40 or point.y < 90 or point.y > viewport.y - 65:
 			continue
-		_draw_actor(point, bool(entry["player"]), entry.get("enemy", {}))
+		if entry.has("exit"):
+			draw_circle(point,8,TEAL)
+			draw_string(ThemeDB.fallback_font,point+Vector2(-16,-15),"EXIT",HORIZONTAL_ALIGNMENT_LEFT,-1,13,TEAL)
+		elif entry.has("object"):
+			_draw_image(str(entry["object"]),point-TILE*0.5)
+		else:
+			_draw_actor(point, bool(entry["player"]), entry.get("enemy", {}))
 	_draw_minimap(viewport)
 	if world.attack_flash > 0.0:
 		var point: Vector2 = iso(world.player) + camera_origin
@@ -326,17 +351,21 @@ func _draw() -> void:
 
 func _draw_actor(point: Vector2, is_player: bool, enemy: Dictionary) -> void:
 	if enemy.get("npc", false):
-		draw_circle(point, 10, Color.GOLD)
-		draw_string(ThemeDB.fallback_font, point + Vector2(-15,-20), "NPC", HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color.GOLD)
-		return
-	var appearance: int = world.character_id if is_player else world.appearance(int(enemy.get("monster_id", 0)))
+		draw_string(ThemeDB.fallback_font, point + Vector2(-15,-65), "NPC", HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color.GOLD)
+	var appearance: int = world.character_id if is_player else int(enemy.get("appearance",world.appearance(int(enemy.get("monster_id", 0)))))
 	var sequences: Array = art.get("actors", {}).get(str(appearance), [])
 	if not sequences.is_empty():
 		var frames: Array = sequences[0]
-		var frame: int = 0 if is_player and world.motion.length_squared() < 0.01 else int(world.elapsed * 8) % mini(8,frames.size())
+		var moving: bool = world.motion.length_squared()>0.01 if is_player else bool(enemy.get("moving",false))
+		var state: String = ("run" if world.running else "walk") if moving and is_player else ("walk" if moving else "idle")
+		var facing: int = world.facing if is_player else int(enemy.get("facing",6))
+		var action_frames: Array = art.get("actor_states",{}).get(str(appearance),{}).get(state,{}).get(str(facing),[])
+		if not action_frames.is_empty():
+			frames = action_frames
+		var frame: int = int(world.elapsed / 0.06) % frames.size()
 		var key: String = frames[frame]
 		_draw_image(key, point)
-		if not is_player:
+		if not is_player and not enemy.get("npc",false):
 			draw_rect(Rect2(point + Vector2(-18, -60), Vector2(36.0 * float(enemy.get("hp",36)) / 36.0, 3)), RED)
 		return
 	draw_set_transform(point, 0.0, Vector2(1.0, 0.43))
@@ -376,13 +405,15 @@ func _draw_minimap(viewport: Vector2) -> void:
 func _draw_image(key: String, point: Vector2) -> bool:
 	if not art.get("images", {}).has(key):
 		return false
-	if not textures.has(key):
-		var image := Image.new()
-		if image.load_png_from_buffer(FileAccess.get_file_as_bytes("res://art/" + key + ".pngdata")) != OK:
-			return false
-		textures[key] = ImageTexture.create_from_image(image)
 	var box: Array = art["images"][key]
-	draw_texture(textures[key], point + Vector2(box[0], box[1]))
+	var payload: String = str(box[4]) if box.size()>4 else key
+	if not textures.has(payload):
+		var image := Image.new()
+		if image.load_png_from_buffer(FileAccess.get_file_as_bytes("res://art/" + payload + ".pngdata")) != OK:
+			return false
+		textures[payload] = ImageTexture.create_from_image(image)
+	image_last_used[payload]=draw_epoch
+	draw_texture(textures[payload], point + Vector2(box[0], box[1]))
 	return true
 
 func _draw_original_tile(x: int, y: int, point: Vector2) -> bool:
@@ -391,7 +422,12 @@ func _draw_original_tile(x: int, y: int, point: Vector2) -> bool:
 		return false
 	var cell: Array = map["cells"][y * world.width + x]
 	_draw_image("tle_%d_%d" % [cell[0], cell[1]], point - TILE * 0.5)
-	_draw_image("obj_%d_%d" % [cell[2], cell[3]], point - TILE * 0.5)
+	var object_key: String = "obj_%d_%d" % [cell[2],cell[3]]
+	var frames: Array = art.get("object_animations",{}).get(object_key,[])
+	if not frames.is_empty():
+		object_key=frames[int(world.elapsed*8)%frames.size()]
+	if art.get("images",{}).has(object_key):
+		object_draws.append({"position":Vector2(x+0.5,y+0.5),"player":false,"object":object_key})
 	return true
 
 func _build_inventory() -> void:
@@ -427,11 +463,16 @@ func _show_inventory() -> void:
 	_row("Gold %d | Weapon +%d | Defeated %d | Offline bounty: defeat 10 creatures" % [world.gold, world.weapon_bonus, world.defeated], func(): pass)
 	_row("Claim bounty reward (10 kills): 100 gold + 3 heals", func(): world.claim_bounty(); _show_inventory())
 	_row("Power strike (20 mana) · Mana %d / 50" % world.mana, func(): inventory_panel.hide(); world.cast_skill())
+	_row("Use nearby EXIT", func(): inventory_panel.hide(); world.use_exit(); textures.clear(); _sync_map_selection())
+	_row("Music: %s · client MIDI track" % ("ON" if music_enabled else "OFF"),func():toggle_music();_show_inventory())
+	_row("Sound: %s" % ("ON" if sounds_enabled else "OFF"), func(): sounds_enabled = not sounds_enabled; _show_inventory())
+	_row("Run: %s" % ("ON" if world.running else "OFF"), func(): world.running = not world.running; _show_inventory())
+	_row("Zone market · reconstructed prices", _market_rows)
 	_row("Interact with nearby NPC / shop", func(): world.interact(); _shop_rows())
 	for key in world.inventory:
 		var item_key: String = str(key)
 		_row("%s × %d · equip/use" % [world.item_name(item_key), world.inventory[item_key]], func(): world.use_item(item_key); _show_inventory())
-	_row("Character appearance: cycle recovered heroes", func(): world.character_id = world.character_id % 9 + 1; world.save_game(); _show_inventory())
+	_row("Character appearance: cycle recovered heroes", func(): world.character_id = (world.character_id+1) % 10; world.save_game(); _show_inventory())
 	_row(world.message, func(): pass)
 
 func _shop_rows() -> void:
@@ -442,3 +483,54 @@ func _shop_rows() -> void:
 	for key in world.inventory:
 		var item_key: String = str(key)
 		_row("Sell %s · 5 gold" % world.item_name(item_key), func(): world.sell_item(item_key); _show_inventory())
+
+func play_sound(action: String) -> void:
+	if not sounds_enabled:
+		return
+	if not audio_players.has(action):
+		var path: String = "res://art/"+action+".wavdata"
+		if not FileAccess.file_exists(path):
+			return
+		var stream := AudioStreamWAV.load_from_buffer(FileAccess.get_file_as_bytes(path))
+		if stream == null:
+			return
+		var player := AudioStreamPlayer.new()
+		player.stream = stream
+		player.volume_db = -10
+		player.max_polyphony = 4
+		add_child(player)
+		audio_players[action] = player
+	audio_players[action].play()
+
+func _market_rows() -> void:
+	for child in inventory_list.get_children():
+		inventory_list.remove_child(child)
+		child.queue_free()
+	_row("BACK · Gold %d" % world.gold, _show_inventory)
+	var stock: Array=world.zone_stock()
+	if stock.is_empty():
+		_row("No supported market stock in this zone.",func():pass)
+	for item in stock:
+		var purchase_key: String=str(item["purchase_key"])
+		_row("Buy %s · %d gold" % [item["name"],item["price"]],func():world.buy_stock(purchase_key);_market_rows())
+
+func toggle_music() -> void:
+	music_enabled = not music_enabled
+	if music == null:
+		var path: String="res://art/music.oggdata"
+		if not FileAccess.file_exists(path):
+			music_enabled=false
+			return
+		var stream := AudioStreamOggVorbis.load_from_buffer(FileAccess.get_file_as_bytes(path))
+		if stream==null:
+			music_enabled=false
+			return
+		stream.loop=true
+		music=AudioStreamPlayer.new()
+		music.stream=stream
+		music.volume_db=-20
+		add_child(music)
+	if music_enabled:
+		music.play()
+	else:
+		music.stop()
