@@ -645,7 +645,7 @@ func interact_with(npc: Dictionary) -> bool:
 		return false
 	var name: String=str(npc.get("name","Traveler")).trim_prefix("+")
 	message=name+": Welcome, "+player_name+"."
-	if adventure_started and map_id==9 and name=="Doctor":
+	if map_id==9 and name=="Doctor":
 		doctor_service();return true
 	shop_available=npc_has_shop(npc)
 	return true
@@ -826,9 +826,24 @@ func objective() -> String:
 	if not adventure_started: return "Explore recovered maps. Start a new character from MENU for the guided adventure."
 	return ["Speak with the Doctor here at Street 1 Hospital.","Visit Street 1 using TRAVEL, then head to the Backyard.","Backyard training: defeat 3 creatures (%d/3)." % tutorial_kills,"Return to Street 1 Hospital and speak with the Doctor.","Training complete. Explore towns, improve equipment and follow recovered exits."][tutorial_stage]
 
+func doctor_guidance() -> String:
+	if not adventure_started:
+		return "Visit the shops in Street 1 or practice in the Backyard. Come back to me whenever you need healing."
+	match tutorial_stage:
+		0: return "I’m the Doctor. Choose BEGIN TRAINING and I’ll give you supplies and explain your first task."
+		1: return "Use TRAVEL to visit Street 1 first, then go to the Backyard. Defeat three creatures there and return to me."
+		2: return "Train in the Backyard. You have defeated %d of 3 creatures. Come back to me when you’re done." % tutorial_kills
+		3: return "You’ve finished your training! Choose COMPLETE TRAINING and I’ll give you your reward."
+		_: return "Your training is complete. Explore the town shops and improve your equipment. I’m here whenever you need healing."
+
+func dialogue_guidance(npc: Dictionary) -> String:
+	if str(npc.get("name","")).trim_prefix("+")=="Doctor" and int(npc.get("map_id",-1))==9:
+		return doctor_guidance()
+	return objective()
+
 func doctor_service() -> void:
 	hp=max_hp();mana=max_mana()
-	if tutorial_stage==0:
+	if adventure_started and tutorial_stage==0:
 		tutorial_stage=1
 		inventory["2:1"]=int(inventory.get("2:1",0))+1
 		use_item("2:1")
@@ -848,11 +863,11 @@ func doctor_service() -> void:
 			use_item(cheapest)
 		gold+=50
 		message="Doctor: Take these supplies. Visit Street 1, then train in the Backyard."
-	elif tutorial_stage==3:
+	elif adventure_started and tutorial_stage==3:
 		tutorial_stage=4;gold+=100;inventory["4:1"]=int(inventory.get("4:1",0))+3
 		message="Doctor: Training complete! Reward: 100 gold and 3 food. Explore the town shops."
 	else:
-		message="Doctor: Your health and mana are restored. "+objective()
+		message="Doctor: Your health and mana are restored. "+doctor_guidance()
 	save_game()
 
 func travel_options() -> Array:

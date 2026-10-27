@@ -79,3 +79,12 @@ In the iOS preset choose your own bundle ID and Apple team, then export the Xcod
 project and select your signing/profile/device in Xcode. The team field is
 deliberately unset: this workspace has no user Apple development identity.
 An iOS export preset is configuration, not evidence of an iOS build or device test.
+
+## Version 0.7.1 hotfix
+
+83 targeted checks passed: ten Doctor dialogue regressions, 32 new-adventure
+checks, 13 item/attribute checks and 28 rendered inventory/dialogue checks.
+Doctor greeting, help and post-heal responses use speaker-specific guidance.
+Older saves receive a working healing choice without changing their progress.
+The prior 173-check full suite and parser checks are recorded above; they were
+not all repeated for this text/service hotfix. No phone test was performed.

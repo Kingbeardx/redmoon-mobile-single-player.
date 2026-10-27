@@ -198,12 +198,12 @@ func open_dialogue(npc: Dictionary, response: String="") -> void:
 	portrait.texture=actor_texture(int(npc.get("image_id",0)));body.add_child(portrait)
 	var words:=VBoxContainer.new();words.size_flags_horizontal=Control.SIZE_EXPAND_FILL;body.add_child(words)
 	var greeting: String="Welcome to "+scene.world.map_name()+", "+scene.world.player_name+". How can I help?"
-	if name=="Doctor":greeting="I can restore your health and mana. "+scene.world.objective()
+	if name=="Doctor":greeting="I can restore your health and mana. "+scene.world.doctor_guidance()
 	elif name=="BankClerk":greeting="Your savings are safe here. Bank balance: %d gold." % scene.world.bank_gold
 	dialogue_text=label(response if not response.is_empty() else greeting,words,30)
 	dialogue_primary=null
 	if name=="Doctor":
-		dialogue_primary=button("BEGIN TRAINING" if scene.world.tutorial_stage==0 else ("COMPLETE TRAINING" if scene.world.tutorial_stage==3 else "RESTORE HEALTH & MANA"),func():
+		dialogue_primary=button("BEGIN TRAINING" if scene.world.adventure_started and scene.world.tutorial_stage==0 else ("COMPLETE TRAINING" if scene.world.adventure_started and scene.world.tutorial_stage==3 else "RESTORE HEALTH & MANA"),func():
 			scene.world.interact_with(speaker);open_dialogue(speaker,scene.world.message),content)
 	elif name=="BankClerk":
 		button("DEPOSIT GOLD",func():scene.world.deposit_gold();open_dialogue(speaker),content)
@@ -213,7 +213,7 @@ func open_dialogue(npc: Dictionary, response: String="") -> void:
 		if is_shop:
 			dialogue_primary=button("BROWSE SHOP",func():
 				if scene.world.interact_with(speaker):close();scene.inventory_panel.show();scene._market_rows(),content)
-	button("WHAT SHOULD I DO NEXT?",func():open_dialogue(speaker,scene.world.objective()),content)
+	button("WHAT SHOULD I DO NEXT?",func():open_dialogue(speaker,scene.world.dialogue_guidance(speaker)),content)
 	button("GOODBYE",close,content)
 
 func actor_texture(appearance: int) -> Texture2D:

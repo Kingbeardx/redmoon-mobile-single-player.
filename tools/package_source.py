@@ -14,7 +14,8 @@ EVIDENCE = ('archive-manifest.json', 'pe-report.json', 'coff-symbols.json',
             'v07-recovered_items.log', 'v07-new_adventure.log',
             'v07-creation_ui.log', 'v07-end_to_end.log', 'v07-accessibility.log', 'v07-inventory_dialogue.log',
             'v07-python.log', 'v07-rules.log', 'v07-build.json',
-            'new-character.asm', 'default-position.asm')
+            'new-character.asm', 'default-position.asm',
+            'v071-doctor_dialogue.log', 'v071-inventory_dialogue.log', 'v071-build.json')
 
 
 def main():

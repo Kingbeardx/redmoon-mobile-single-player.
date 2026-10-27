@@ -4,7 +4,7 @@ Android game rebuilt from the supplied server data and the RMA 7.0 client.
 
 ## Play
 
-Install `build/Redmoon-Mobile-v0.7.apk` on ARM64 Android 7.0 or newer.
+Install `build/Redmoon-Mobile-v0.7.1.apk` on ARM64 Android 7.0 or newer.
 Use the movement pad and ATTACK/HEAL buttons. BAG opens an item grid with separate CHARACTER and JOURNEY tabs. Tap an NPC
 to open their dialogue; distant NPCs can be approached automatically.
 Gold NPC markers identify interaction locations. Use the upper-right TRAVEL menu for connected locations and the beginner town guide. Progress saves locally, automatically and with SAVE. No server/login needed.
@@ -209,3 +209,11 @@ The new UI suspends the joystick while modal panels are visible. NPC picking
 accounts for camera zoom and HUD clipping. Integration tests use actual GUI
 clicks plus touch events at 1.25x, 2x and 3x zoom, and cover stat persistence,
 malformed/over-budget allocations, save rollback and automatic approach.
+
+## Version 0.7.1 — contextual Doctor guidance
+
+The Doctor's greeting and WHAT SHOULD I DO NEXT answer now speak from her
+perspective. Before training she explains BEGIN TRAINING; after training she
+offers COMPLETE TRAINING. Progress guidance reports Backyard defeats, and
+completed characters receive exploration guidance. HUD quest reminders remain
+separate. Older saves can use her healing service without restarting progress.
