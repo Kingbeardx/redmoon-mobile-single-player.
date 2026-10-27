@@ -150,3 +150,15 @@ remaining-charge persistence, malformed optional state, active-effects UI and
 Kitara/Lunarena equipment/save mapping. All previous progression, inventory,
 UI, respawn and mixed-audio checks pass. Captures: `v12-protection.png` and
 `v12-effects.png`. No physical Android or iOS testing has been performed.
+
+## v0.13 validation
+
+491 Godot checks and 62 Python/rule checks pass. The 35 backend story checks cover
+level gating, targets, caps/rewards, Microfilm protection, wrong-answer retries,
+save-failure rollback, old encounter repair, boss HP persistence and NPC anchors.
+13 rendered story checks play the chapter using actual touch combat (including
+Ice Rain for adds), healing, NPC taps, quiz buttons, guide travel and turn-ins.
+Both encounters are survivable with the existing controls. Importer tests verify
+server/client event round trips, 43 Removed slots, original text, NPC role
+selection, target IDs and cap metadata. Earlier checks also pass. No physical
+Android or iOS testing has been performed.

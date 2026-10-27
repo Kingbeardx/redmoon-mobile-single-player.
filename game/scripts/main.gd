@@ -331,7 +331,7 @@ func _update_ui() -> void:
 	location_label.text=world.map_name()
 	if status.text!=world.message:status_age=0;status.modulate.a=1
 	status.text=world.message
-	help_label.text=["Meet the Doctor","Visit Street 1","Backyard · %d / 3" % world.tutorial_kills,"Return to Doctor","Explore Redmoon"][world.tutorial_stage] if world.adventure_started else "Explore Redmoon"
+	help_label.text=world.story.title() if world.story.active() else ["Meet the Doctor","Visit Street 1","Backyard · %d / 3" % world.tutorial_kills,"Return to Doctor","Explore Redmoon"][world.tutorial_stage] if world.adventure_started else "Explore Redmoon"
 	var cooldown: float=world.attack_cooldown/.45
 	attack_button.set_state("",cooldown)
 	heal_button.disabled=world.potions<=0;heal_button.set_state(str(world.potions),0)
@@ -457,6 +457,8 @@ func _draw_actor(point: Vector2, is_player: bool, enemy: Dictionary) -> void:
 	if enemy.get("npc", false):
 		draw_string(ThemeDB.fallback_font, point + Vector2(-35,-65), str(enemy.get("npc_name","NPC")), HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color.GOLD)
 	if not is_player and not enemy.get("npc",false):
+		var quest_name: String=world.story.target_name(int(enemy.get("monster_id",0)))
+		if not quest_name.is_empty():draw_string(ThemeDB.fallback_font,point+Vector2(-35,-112),quest_name,HORIZONTAL_ALIGNMENT_LEFT,-1,14,Color("f4d084"))
 		var change: int=world.expected_honor(int(enemy.get("monster_id",0)))
 		if change!=0:draw_string(ThemeDB.fallback_font,point+Vector2(-34,-78),"Honor %+d" % change,HORIZONTAL_ALIGNMENT_LEFT,-1,12,Color("8ed8f0") if change>0 else Color("f0a590"))
 		var state_text: String=""
@@ -477,7 +479,7 @@ func _draw_actor(point: Vector2, is_player: bool, enemy: Dictionary) -> void:
 		var key: String = frames[frame]
 		_draw_image(key, point)
 		if not is_player and not enemy.get("npc",false):
-			draw_rect(Rect2(point + Vector2(-18, -60), Vector2(36.0 * float(enemy.get("hp",36)) / 36.0, 3)), RED)
+			draw_rect(Rect2(point + Vector2(-18, -60), Vector2(36.0 * clampf(float(enemy.get("hp",36))/maxf(1,float(enemy.get("max_hp",36))),0,1), 3)), RED)
 		return
 	draw_set_transform(point*world_zoom, 0.0, Vector2(world_zoom, 0.43*world_zoom))
 	draw_circle(Vector2.ZERO, 17, Color(0.0, 0.0, 0.0, 0.5))
@@ -497,7 +499,7 @@ func _draw_actor(point: Vector2, is_player: bool, enemy: Dictionary) -> void:
 		draw_circle(point + Vector2(-4, -21), 1.7, Color(1.0, 0.82, 0.58))
 		draw_circle(point + Vector2(4, -21), 1.7, Color(1.0, 0.82, 0.58))
 		draw_rect(Rect2(point + Vector2(-17, -39), Vector2(34, 4)), Color(0.12, 0.08, 0.11))
-		draw_rect(Rect2(point + Vector2(-17, -39), Vector2(34.0 * float(enemy.get("hp", 36)) / 36.0, 4)), RED)
+		draw_rect(Rect2(point + Vector2(-17, -39), Vector2(34.0 * clampf(float(enemy.get("hp",36))/maxf(1,float(enemy.get("max_hp",36))),0,1), 4)), RED)
 		draw_string(ThemeDB.fallback_font, point + Vector2(-18, -45), "#%d" % int(enemy.get("monster_id", 0)), HORIZONTAL_ALIGNMENT_LEFT, -1, 11, Color(0.75, 0.62, 0.65))
 
 func _draw_minimap(viewport: Vector2) -> void:
@@ -513,6 +515,10 @@ func _draw_minimap(viewport: Vector2) -> void:
 			if world.is_open(Vector2i(x, y)):
 				draw_rect(Rect2(origin + Vector2(x, y) * scale_factor, Vector2.ONE * maxf(1, step * scale_factor)), Color(0.2, 0.3, 0.35))
 	draw_circle(origin + world.player * scale_factor, 3.1, TEAL)
+	for npc in world.story.data.get("npcs",[]):
+		if int(npc["map_id"])==world.map_id and world.story.next_destination()==world.map_id:draw_circle(origin+world.npc_position(npc)*scale_factor,4.5,Color.GOLD)
+	for enemy in world.enemies:
+		if bool(enemy.get("alive",false)) and not world.story.target_name(int(enemy.get("monster_id",0))).is_empty():draw_circle(origin+Vector2(enemy["x"],enemy["y"])*scale_factor,4.5,Color.GOLD)
 
 func _draw_image(key: String, point: Vector2) -> bool:
 	if not art.get("images", {}).has(key):
@@ -625,7 +631,7 @@ func _travel_rows() -> void:
 		inventory_list.remove_child(child);child.queue_free()
 	_row("BACK · "+world.map_name(),_show_inventory)
 	_paragraph(world.objective())
-	_row("Town guide offers transport between beginner locations.",func():pass)
+	_row("Town guide · starter services and unlocked story destinations.",func():pass)
 	for id in world.travel_options():
 		if id==world.map_id: continue
 		var destination: int=id

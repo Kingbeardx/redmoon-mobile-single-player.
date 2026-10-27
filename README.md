@@ -329,3 +329,18 @@ short offline safety limits rather than the complete original status formulas.
 Kitara/Lunarena portraits, equipment checks and biography examples now follow
 the original server-to-display class mapping. Existing characters keep their
 identity and items. See [evidence and limits](docs/monster-skills-and-protection.md).
+
+## v0.13 recovered story progression
+
+At original level 50, JOURNEY → STORY opens the recovered Spy / Microfilm /
+Geographer / Kasham / Esper chapter. Complete its objectives and NPC conversations
+to raise honor caps from 100 to 200, 300 and 400. The original level requirement,
+dialogue text, quest targets, flags and evidenced honor/map rewards are retained;
+interaction glue is rebuilt because 43 event-script slots are explicitly removed
+in both supplied server packs. Original quest XP and later chapters remain missing.
+
+Guide travel, map tracking, protected quest items, retry handling and persistent
+boss damage keep the chapter playable offline. Fixed spawn quantities and
+separated NPC anchors fix the missing Spy / untappable Geographer problems.
+Regenerate with `python3 tools/story_import.py /path/to/Redmoon`.
+See [story evidence and limits](docs/story-reconstruction.md).

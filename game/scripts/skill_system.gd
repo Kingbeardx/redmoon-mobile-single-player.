@@ -154,6 +154,7 @@ func cast(id: int) -> bool:
 		if targets.is_empty():world.message="No creature in range for "+row["name"]+".";return false
 		if not bool(row["area"]):targets.resize(1)
 	elif mode=="heal" and (world.hp>=world.max_hp() or used<=0):world.message="No wounds to heal.";return false
+	var story_flags: int=world.story.flags
 	world.mana-=used
 	world.attack_cooldown=.45;world.attack_flash=.18;cooldowns[id]=RECOVERY
 	if offensive:break_disguise()
@@ -191,6 +192,7 @@ func cast(id: int) -> bool:
 		if mode=="decoy":buffs[id]["charges"]=3
 		effects.append({"x":world.player.x,"y":world.player.y,"mode":"buff","remaining":.65,"label":row["name"]})
 	world.message=str(row["name"])+(" · %d target(s)" % targets.size() if offensive else "")+" · %d MP" % used
+	if world.story.flags!=story_flags:world.message="Story updated · "+world.story.title()+" · Honor cap ±%d" % world.honor_cap()
 	return true
 
 func serialize() -> Dictionary:

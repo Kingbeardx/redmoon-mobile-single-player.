@@ -187,6 +187,7 @@ func show_journal() -> void:
 	label("HONOR %+d / ±%d · Creature labels show the change for defeating them." % [scene.world.honor,scene.world.honor_cap()],content,24)
 	var scroll:=ScrollContainer.new();scroll.size_flags_vertical=Control.SIZE_EXPAND_FILL;content.add_child(scroll)
 	var list:=VBoxContainer.new();list.size_flags_horizontal=Control.SIZE_EXPAND_FILL;scroll.add_child(list)
+	button("STORY · "+scene.world.story.title(),show_story,list)
 	button("SAVE GAME",func():scene._save();show_journal(),list)
 	button("MINIMAP: "+("ON" if scene.minimap_visible else "OFF"),func():scene.minimap_visible=not scene.minimap_visible;scene.queue_redraw();show_journal(),list)
 	button("TOWN GUIDE / TRAVEL",func():close();scene.inventory_panel.show();scene._travel_rows(),list)
@@ -203,6 +204,7 @@ func talk_nearby() -> void:
 	else:open_dialogue(npc)
 
 func open_dialogue(npc: Dictionary, response: String="") -> void:
+	if not scene.world.story.role(npc).is_empty():show_story_dialogue(npc,response);return
 	if int(npc.get("map_id",-1))!=scene.world.map_id or scene.world.npc_position(npc).distance_to(scene.world.player)>=8:
 		scene.world.message="Move closer to speak with this person.";return
 	speaker=npc.duplicate(true)
@@ -355,7 +357,7 @@ func show_skills() -> void:
 	label("Level %d  ·  %s\nRange %s tiles  ·  %s" % [int(row["level"]),mana_text,str(row["range"]),"AREA" if bool(row["area"]) else "SINGLE / SELF"],details,25)
 	var honor: int=int(row["honor"])
 	if honor!=0:label("Honor required: %+d · Your honor: %+d\nDefeat creatures marked with the honor change you want.
-Current cap: ±100. Higher caps need quests not yet restored." % [honor,scene.world.honor],details,25)
+Complete the recovered story chapter to raise your honor cap to ±400. Later honor-cap quests are not yet playable." % [honor,scene.world.honor],details,25)
 	if row["mode"]=="pending":label("This original skill is recorded here, but its effects are not playable yet."+(" It needs the special DP system." if int(row["kind"])==1 else ""),details,25)
 	else:label("Original requirements and icons. Combat effects are reconstructed for offline play."+(" Nearby-ally healing applies to you in single-player." if row["mode"]=="heal" and selected_skill!=1 else ""),details,23)
 	label("YOUR HOTBAR",details,25)
@@ -378,3 +380,40 @@ func refresh_effects() -> void:
 	for name in scene.world.skills.ailments:lines.append("%s · %ds" % [str(name).to_upper(),int(ceil(scene.world.skills.ailments[name]))])
 	for buff in scene.world.skills.buffs.values():lines.append("%s · %ds%s" % [buff["name"],int(ceil(buff["remaining"]))," · %d protected hits" % int(buff["charges"]) if buff.has("charges") else ""])
 	effect_text.text="No active effects." if lines.is_empty() else "\n\n".join(lines)
+
+func show_story() -> void:
+	var quest=scene.world.story;quest.update();open_page("STORY · "+quest.title(),"story")
+	var scroll:=ScrollContainer.new();scroll.size_flags_vertical=Control.SIZE_EXPAND_FILL;content.add_child(scroll)
+	var list:=VBoxContainer.new();list.size_flags_horizontal=Control.SIZE_EXPAND_FILL;list.add_theme_constant_override("separation",18);scroll.add_child(list)
+	label(quest.objective(),list,30)
+	label("HONOR %+d · CURRENT CAP ±%d" % [scene.world.honor,scene.world.honor_cap()],list,28)
+	for entry in [[2,"Defeat the Spy and recover Microfilm · cap ±200"],[4,"Pass the Archeologist's microfilm test"],[8,"Let the Street 3 Geographer make a map · cap ±300"],[16,"Accept Kasham's Esper mission"],[32,"Defeat Esper in Sahara Dungeon 1"],[64,"Report to Kasham · cap ±400"]]:
+		label(("✓ " if quest.has(int(entry[0])) else "○ ")+str(entry[1]),list,25)
+	var target: int=quest.next_destination()
+	if target>=0:
+		button("GUIDE TO "+scene.world.map_name(target).to_upper(),func():
+			if scene.world.travel_to(target):close();scene.textures.clear();scene._sync_map_selection();scene._update_ui();scene.queue_redraw(),list)
+	button("TRACK ON MAP",func():scene.minimap_visible=true;close();scene.queue_redraw(),list)
+	label("The first chapter is playable. Later chapters and original quest XP rewards are not available yet.",list,24)
+
+func show_story_dialogue(npc: Dictionary,response: String="") -> void:
+	if not scene.world.story.can_talk(npc):return
+	speaker=npc.duplicate(true);var quest=scene.world.story
+	open_page(str(npc.get("name","")).trim_prefix("+").to_upper(),"story_dialogue")
+	var scroll:=ScrollContainer.new();scroll.size_flags_vertical=Control.SIZE_EXPAND_FILL;content.add_child(scroll)
+	var body:=VBoxContainer.new();body.size_flags_horizontal=Control.SIZE_EXPAND_FILL;body.add_theme_constant_override("separation",18);scroll.add_child(body)
+	var portrait:=TextureRect.new();portrait.custom_minimum_size=Vector2(120,150);portrait.expand_mode=TextureRect.EXPAND_IGNORE_SIZE;portrait.stretch_mode=TextureRect.STRETCH_KEEP_ASPECT_CENTERED;portrait.texture=actor_texture(int(npc.get("image_id",0)));body.add_child(portrait)
+	dialogue_text=label(response if not response.is_empty() else quest.greeting(npc),body,28)
+	var action: String=quest.action(npc);dialogue_primary=null
+	if action=="QUIZ":
+		for choice in range(4):
+			var answer: int=choice
+			button(quest.text(192+choice),func():
+				var ok: bool=quest.finish(speaker,answer)
+				show_story_dialogue(speaker,quest.last_reply if ok else scene.world.message),body)
+	elif not action.is_empty():
+		dialogue_primary=button(action,func():
+			var ok: bool=quest.finish(speaker)
+			show_story_dialogue(speaker,quest.last_reply if ok else scene.world.message),body)
+	button("QUEST JOURNAL",show_story,body)
+	button("GOODBYE",close,body)

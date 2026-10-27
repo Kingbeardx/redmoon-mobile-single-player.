@@ -26,6 +26,8 @@ var mana: int = 50
 var bounty_claimed: bool = false
 var honor: int = 0
 var monster_metadata: Dictionary={}
+var npc_anchors: Dictionary={}
+var story=preload("res://scripts/story_quests.gd").new()
 var skills=preload("res://scripts/skill_system.gd").new()
 var monster_skills=preload("res://scripts/monster_skills.gd").new()
 var motion: Vector2 = Vector2.ZERO
@@ -77,6 +79,7 @@ func read_json(path: String) -> Variant:
 
 func initialize(root: String = "res://data") -> bool:
 	data_root = root
+	story.setup(self,read_json(data_root+"/story.json"))
 	var skill_data=read_json(data_root+"/skills.json")
 	skills.setup(self,skill_data);monster_skills.setup(self,skill_data)
 	var journey_data = read_json(data_root+"/journey.json")
@@ -144,6 +147,7 @@ func enter_map(id: int, keep_current: bool = true) -> bool:
 	shop_available=false
 	current_map = decoded
 	map_id = id
+	npc_anchors.clear()
 	width = w
 	height = h
 	walkable = cells
@@ -221,12 +225,18 @@ func spawn_enemies() -> void:
 		for row in candidates:
 			if signi(monster_reputation(int(row["monster_id"])))==sign_needed:candidate=row;break
 		if not candidate.is_empty():candidates.erase(candidate);candidates.push_front(candidate)
-	# A bounded sample, not original MMO population. Every point stays inside its
-	# recovered spawn rectangle, with passability checks against the decoded map.
-	for i in range(MAX_ENEMIES):
-		if candidates.is_empty():
-			break
-		var source: Dictionary = candidates[i % candidates.size()]
+	story.prioritize(candidates)
+	# Bound the sample while respecting each original group's quantity. In
+	# particular, one-shot quest rooms must not contain six copies of a boss.
+	var selected: Array=[];var used: Dictionary={}
+	for pass_index in range(MAX_ENEMIES):
+		var added: bool=false
+		for index in range(candidates.size()):
+			if selected.size()>=MAX_ENEMIES:break
+			if int(used.get(index,0))>=int(candidates[index].get("quantity",0)):continue
+			selected.append(candidates[index]);used[index]=int(used.get(index,0))+1;added=true
+		if not added or selected.size()>=MAX_ENEMIES:break
+	for source in selected:
 		var bounds: Dictionary = source.get("bounds", {})
 		var left: int = clampi(int(bounds.get("left", 0)), 0, width - 1)
 		var top: int = clampi(int(bounds.get("top", 0)), 0, height - 1)
@@ -240,12 +250,13 @@ func spawn_enemies() -> void:
 				pos = Vector2(clampi(int(center.x), left, right) + 0.5, clampi(int(center.y), top, bottom) + 0.5)
 			else:
 				pos = Vector2(random.randi_range(left, right) + 0.5, random.randi_range(top, bottom) + 0.5)
-			if can_stand(pos) and pos.distance_to(player) > 3.0:
+			if can_stand(pos) and (pos.distance_to(player)>3.0 or (left==right and top==bottom)):
 				found = true
 				break
 		if not found:
 			continue
-		enemies.append({"monster_id": int(source.get("monster_id", 0)), "name": str(source.get("name", "")), "x": pos.x, "y": pos.y, "hp": 36, "max_hp": 36, "cooldown": random.randf_range(0.1, 1.5), "alive": true, "respawn_seconds": source.get("respawn_seconds",60), "respawn_timer": 0.0, "source": source.get("source", {}),"home_x":pos.x,"home_y":pos.y})
+		var maximum: int=story.encounter_hp(int(source.get("monster_id",0)))
+		enemies.append({"monster_id": int(source.get("monster_id", 0)), "name": str(source.get("name", "")), "x": pos.x, "y": pos.y, "hp": maximum, "max_hp": maximum, "cooldown": random.randf_range(0.1, 1.5), "alive": true, "respawn_seconds": source.get("respawn_seconds",60), "respawn_timer": 0.0, "source": source.get("source", {}),"home_x":pos.x,"home_y":pos.y})
 
 func tick(delta: float, direction: Vector2) -> void:
 	if map_id < 0:
@@ -387,6 +398,8 @@ func damage_enemy(target: Dictionary,amount: int) -> void:
 	else:
 		message = "Hit creature %d" % int(target["monster_id"])
 
+	if int(target["hp"])<=0:story.on_defeat(int(target["monster_id"]))
+
 func receive_damage(amount: int,_attacker: Dictionary={},psychic: bool=false) -> void:
 	if amount<=0 or skills.absorb_decoy():return
 	if not psychic:amount=maxi(1,amount-armor_bonus)
@@ -426,7 +439,7 @@ func restore_map_state(state: Dictionary) -> void:
 			var proposed := Vector2(float(candidate.get("x", -1)), float(candidate.get("y", -1)))
 			if not proposed.is_finite() or not can_stand(proposed):
 				continue
-			enemies.append({"monster_id": int(candidate.get("monster_id", 0)), "name": str(candidate.get("name", "")), "x": proposed.x, "y": proposed.y, "hp": clampi(int(candidate.get("hp", 36)), 0, 36), "max_hp": 36, "cooldown": 1.0, "alive": bool(candidate.get("alive", true)), "respawn_seconds": maxf(1,float(candidate.get("respawn_seconds",60))), "respawn_timer": maxf(0,float(candidate.get("respawn_timer",60))-away), "source": candidate.get("source", {}),"home_x":float(candidate.get("home_x",proposed.x)),"home_y":float(candidate.get("home_y",proposed.y))})
+			enemies.append({"monster_id": int(candidate.get("monster_id", 0)), "name": str(candidate.get("name", "")), "x": proposed.x, "y": proposed.y, "hp": clampi(int(candidate.get("hp", 36)), 0, story.encounter_hp(int(candidate.get("monster_id",0)))), "max_hp": story.encounter_hp(int(candidate.get("monster_id",0))), "cooldown": 1.0, "alive": bool(candidate.get("alive", true)), "respawn_seconds": maxf(1,float(candidate.get("respawn_seconds",60))), "respawn_timer": maxf(0,float(candidate.get("respawn_timer",60))-away), "source": candidate.get("source", {}),"home_x":float(candidate.get("home_x",proposed.x)),"home_y":float(candidate.get("home_y",proposed.y))})
 
 	advance_respawns(0)
 	ensure_respawn_mix()
@@ -434,7 +447,7 @@ func restore_map_state(state: Dictionary) -> void:
 
 func save_game(path: String = "user://progress.json") -> Error:
 	remember_map()
-	var record: Dictionary = {"honor":honor,"skills":skills.serialize(),"roster_version":2,"player_name":player_name,"adventure_started":adventure_started,"tutorial_stage":tutorial_stage,"tutorial_kills":tutorial_kills,"visited":visited,"bank_gold":bank_gold,"version": SAVE_VERSION, "map_id": map_id, "hp": hp, "xp": xp, "level": level, "potions": potions, "defeated": defeated, "map_states": map_states, "stats":stats,"bonus_points":bonus_points,"equipment":equipment,"purchases":purchases,"facing":facing,"armor_bonus":armor_bonus,"gold":gold,"inventory":inventory,"weapon_bonus":weapon_bonus,"character_id":character_id,"mana":mana,"bounty_claimed":bounty_claimed}
+	var record: Dictionary = {"story":story.serialize(),"honor":honor,"skills":skills.serialize(),"roster_version":2,"player_name":player_name,"adventure_started":adventure_started,"tutorial_stage":tutorial_stage,"tutorial_kills":tutorial_kills,"visited":visited,"bank_gold":bank_gold,"version": SAVE_VERSION, "map_id": map_id, "hp": hp, "xp": xp, "level": level, "potions": potions, "defeated": defeated, "map_states": map_states, "stats":stats,"bonus_points":bonus_points,"equipment":equipment,"purchases":purchases,"facing":facing,"armor_bonus":armor_bonus,"gold":gold,"inventory":inventory,"weapon_bonus":weapon_bonus,"character_id":character_id,"mana":mana,"bounty_claimed":bounty_claimed}
 	var temporary: String = path + ".tmp"
 	var file := FileAccess.open(temporary, FileAccess.WRITE)
 	if file == null:
@@ -497,6 +510,7 @@ func load_game(path: String = "user://progress.json") -> bool:
 	for key in purchases:
 		purchases[key] = int(purchases[key])
 	facing = int(saved.get("facing",6))
+	story.restore(saved.get("story",{}))
 	message = "Local progress restored."
 	return true
 
@@ -560,7 +574,7 @@ func valid_save(saved: Variant) -> bool:
 	return true
 
 func reset_progress(path: String = "user://progress.json") -> void:
-	honor=0;skills.reset()
+	honor=0;skills.reset();story.reset()
 	for suffix in ["", ".bak", ".tmp"]:
 		if FileAccess.file_exists(path+suffix): DirAccess.remove_absolute(path+suffix)
 	map_states = {}
@@ -682,9 +696,39 @@ func cast_skill() -> bool:
 		attack_cooldown=0
 	return hit
 
-func npc_position(npc: Dictionary) -> Vector2:
+func npc_key(npc: Dictionary) -> String:
+	return str(npc.get("map_id",-1))+":"+str(npc.get("event_id",-1))+":"+str(npc.get("name",""))+":"+JSON.stringify(npc.get("bounds",{}))
+
+func npc_center(npc: Dictionary) -> Vector2:
 	var b: Dictionary=npc.get("bounds",{})
-	return Vector2((float(b.get("left",0))+float(b.get("right",0)))*0.5,(float(b.get("top",0))+float(b.get("bottom",0)))*0.5)
+	return Vector2((float(b.get("left",0))+float(b.get("right",0)))*.5,(float(b.get("top",0))+float(b.get("bottom",0)))*.5)
+
+func npc_position(npc: Dictionary) -> Vector2:
+	if int(npc.get("map_id",-1))!=map_id:return npc_center(npc)
+	if npc_anchors.is_empty():prepare_npc_anchors()
+	return npc_anchors.get(npc_key(npc),npc_center(npc))
+
+func prepare_npc_anchors() -> void:
+	var rows: Array=[];var occupied: Array=[]
+	for npc in content.get("npcs",[]):
+		if int(npc.get("map_id",-1))==map_id:rows.append(npc)
+	rows.sort_custom(func(a: Dictionary,b: Dictionary)->bool:
+		if int(a["event_id"])!=int(b["event_id"]):return int(a["event_id"])<int(b["event_id"])
+		return npc_key(a)<npc_key(b))
+	for npc in rows:
+		var key: String=npc_key(npc);var point: Vector2=npc_center(npc);var bounds: Dictionary=npc.get("bounds",{})
+		var nearest: float=INF
+		for other in occupied:nearest=minf(nearest,point.distance_to(other))
+		if nearest<3 and (int(bounds.get("left",0))!=int(bounds.get("right",0)) or int(bounds.get("top",0))!=int(bounds.get("bottom",0))):
+			var random:=RandomNumberGenerator.new();random.seed=key.hash()
+			for attempt in range(96):
+				var next:=Vector2(random.randi_range(int(bounds["left"]),int(bounds["right"])),random.randi_range(int(bounds["top"]),int(bounds["bottom"])))
+				if not can_stand(next):continue
+				var spacing: float=INF
+				for other in occupied:spacing=minf(spacing,next.distance_to(other))
+				if spacing>nearest:point=next;nearest=spacing
+				if spacing>=3:break
+		npc_anchors[key]=point;occupied.append(point)
 
 func nearest_npc() -> Dictionary:
 	var nearest: Dictionary={}
@@ -730,6 +774,7 @@ func buy_heal() -> void:
 		save_game()
 
 func sell_item(key: String) -> void:
+	if key=="5:1" and story.active():message="Keep the Microfilm for the Archeologist.";return
 	if shop_available and int(inventory.get(key,0)) > 0:
 		inventory[key] -= 1
 		gold += maxi(0,int(item_metadata.get(key,{}).get("price",10))/2)
@@ -883,7 +928,7 @@ func create_character(chosen_name: String, hero: int, path: String="user://progr
 	# Preserve the previous save/backup until the new adventure is saved atomically.
 	map_states={};inventory={"4:1":5,"5:93":1,"5:94":1,"5:95":1};equipment={};purchases={}
 	stats={"strength":10,"spirit":10,"dexterity":10,"power":10}
-	honor=0;skills.reset()
+	honor=0;skills.reset();story.reset()
 	bonus_points=0;level=1;xp=0;gold=0;bank_gold=0;defeated=0;potions=5
 	weapon_bonus=0;armor_bonus=0;bounty_claimed=false;character_id=hero;player_name=clean
 	adventure_started=true;tutorial_stage=0;tutorial_kills=0;visited=[]
@@ -893,10 +938,12 @@ func create_character(chosen_name: String, hero: int, path: String="user://progr
 	return save_game(path)==OK
 
 func objective() -> String:
+	if story.active():return story.objective()
 	if not adventure_started: return "Explore recovered maps. Start a new character from MENU for the guided adventure."
 	return ["Speak with the Doctor here at Street 1 Hospital.","Visit Street 1 using TRAVEL, then head to the Backyard.","Backyard training: defeat 3 creatures (%d/3)." % tutorial_kills,"Return to Street 1 Hospital and speak with the Doctor.","Training complete. Explore towns, improve equipment and follow recovered exits."][tutorial_stage]
 
 func doctor_guidance() -> String:
+	if story.active():return story.objective()
 	if not adventure_started:
 		return "Visit the shops in Street 1 or practice in the Backyard. Come back to me whenever you need healing."
 	match tutorial_stage:
@@ -907,6 +954,7 @@ func doctor_guidance() -> String:
 		_: return "Your training is complete. Explore the town shops and improve your equipment. I’m here whenever you need healing."
 
 func dialogue_guidance(npc: Dictionary) -> String:
+	if story.active():return story.objective()
 	if str(npc.get("name","")).trim_prefix("+")=="Doctor" and int(npc.get("map_id",-1))==9:
 		return doctor_guidance()
 	return objective()
@@ -949,6 +997,8 @@ func travel_options() -> Array:
 	if adventure_started:
 		for id in [0,1,4,5,9,10]:
 			if not options.has(id): options.append(id)
+	for id in story.destinations():
+		if not options.has(id):options.append(id)
 	options.sort()
 	return options
 
@@ -958,7 +1008,8 @@ func travel_to(id: int) -> bool:
 		return false
 	var first_visit: bool=not visited.has(id)
 	var target: Variant=journey.get("links",{}).get(str(map_id),{}).get(str(id))
-	if not enter_map(id): return false
+	remember_map();story.prepare_travel(id)
+	if not enter_map(id,false): return false
 	if id in [4,5,9,10]:
 		player=find_start([9,12])
 	elif target is Array:
@@ -968,6 +1019,11 @@ func travel_to(id: int) -> bool:
 	if first_visit:
 		enemies=[]
 		spawn_enemies()
+	if story.destinations().has(id):
+		for npc in story.data.get("npcs",[]):
+			if int(npc["map_id"])==id:
+				var point: Vector2=npc_position(npc)+Vector2(3,2)
+				player=find_start([int(point.x),int(point.y)]);break
 	arrival_grace=5.0
 	message="Arrived at "+map_name()+". "+objective()
 	save_game()
@@ -1043,7 +1099,11 @@ func ensure_respawn_mix() -> void:
 func monster_reputation(id: int) -> int:
 	return int(monster_metadata.get(id,{}).get("reputation",0))
 
-func honor_cap() -> int:return 100 # Higher caps require original quest flags.
+func honor_cap() -> int:
+	if story.has(64):return 400
+	if story.has(8):return 300
+	if story.has(2):return 200
+	return 100
 
 func honor_after_kill(current: int,reputation: int) -> int:
 	if reputation==0:return current
