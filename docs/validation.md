@@ -127,3 +127,15 @@ Use separate XDG_DATA_HOME profiles for independent UI tests; an existing local
 save/audio/accessibility setting otherwise changes clean-install expectations.
 Rendered tests used Xvfb, Mesa and Godot's Dummy output with actual mixed PCM
 capture. No physical Android or iOS device test has been performed.
+
+## v0.11 validation
+
+384 Godot checks and 49 Python/rule checks pass. New tests exercise all 61
+supported entries, signed honor gains and caps, no duplicate rewards, original
+faction sampling and legacy repair, sleep/wake, freeze, blindness, lifesteal
+bounded by actual damage, invisibility, saved fear auras, status reset on respawn,
+projectile references, honor-gated UI assignment and actual touch spell casting.
+20 entries have decoded original projectile sequences; transparent animation
+frames are preserved. Captures are `analysis/v11-projectile.png` and
+`analysis/v11-skills.png`. All earlier gameplay, UI, save and mixed-audio checks
+also pass. No physical Android or iOS test has been performed.

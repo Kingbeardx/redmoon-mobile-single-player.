@@ -66,6 +66,6 @@ func run() -> void:
 		var weapons: Dictionary={"sword":"1:1","spear":"1:83","bow":"1:33","gun":"1:52","firearm":"1:52"}
 		if row["weapon"]!="":w.equipment={"weapon":weapons[row["weapon"]]}
 		check(w.skills.cast(int(row["id"])),"supported original skill executes: "+row["name"]);count+=1
-	check(count==49,"all 49 admitted skills exercised")
+	check(count==61,"all 61 admitted skills exercised")
 	for suffix in ["", ".bak"]:DirAccess.remove_absolute(path+suffix)
 	print("SKILLS: %d checks, %d failures" % [checks,failures]);quit(1 if failures else 0)

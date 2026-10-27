@@ -14,6 +14,9 @@ FORMAT = '<IHIiIBIh5BII'
 DAMAGE = {3,8,10,11,12,14,20,21,26,30,32,36,37,39,42,44,46,61,67,69,71,78,82,88,302,313,331,371,373}
 BUFFS = {3:'disguise',4:'attack_up',5:'attack_up',6:'haste',9:'mana_shield',11:'barrier',13:'reload',14:'range_up'}
 DEBUFFS = {7:'weaken',15:'root',16:'root',38:'slow'}
+EXTRA_MODES = {9:'sleep',303:'sleep',86:'sleep',19:'freeze',84:'blind',
+               66:'damage_blind',89:'damage_freeze',27:'leech',76:'leech',
+               57:'disguise',87:'disguise',35:'fear_aura'}
 
 def fields(raw):
     if len(raw) != 38:
@@ -58,6 +61,7 @@ def build(server, client):
             elif effect==1: mode='heal'
             elif effect in BUFFS: mode=BUFFS[effect]
             elif effect in DEBUFFS: mode=DEBUFFS[effect]
+            if ident in EXTRA_MODES:mode=EXTRA_MODES[ident]
         desc=description.replace('\\\\n','\n').replace('\\n','\n')
         weapon=''
         if 'Sword Required' in desc: weapon='sword'
@@ -69,13 +73,14 @@ def build(server, client):
         result.append({'id':ident,'hero':hero,'name':name,'description':desc,
                        'kind':row['prefix_u8'],**v,'range':v['range_encoded']%10000,
                        'area':v['range_encoded']>=10000,'mode':mode,'weapon':weapon,
+                       'leech_percent':30 if ident==27 else 50 if ident==76 else 0,
                        'message_key':key,'client_differences':differing,
                        'status':'reconstructed' if mode!='pending' else 'reference_only'})
         if mode=='pending': issues.append(ident)
     return {'schema_version':1,'source_sha256':hashlib.sha256(server.read_bytes()).hexdigest(),
             'client_sha256':hashlib.sha256((client/'DATAs/Info/skill00.rmi').read_bytes()).hexdigest(),
             'requirements':'Original 3.8 server; English text and displayed hero IDs from Message.ctf',
-            'runtime_limit':'Damage, cooldown, targeting and status integration use the offline combat model. Honor rewards, DP, multiplayer and advanced effects remain incomplete.',
+            'runtime_limit':'Damage, cooldown, targeting and status integration use the offline combat model. Honor cap quests, DP, multiplayer and advanced effects remain incomplete.',
             'skills':result,'summary':{'player_skills':len(result),'reconstructed':len(result)-len(issues),'reference_only':len(issues)}}
 
 def icons(client,game,catalog):
@@ -97,6 +102,30 @@ def icons(client,game,catalog):
     art_path.write_text(json.dumps(art,separators=(',',':')))
     return {'icons':len(mapping),'issues':issues}
 
+def projectiles(client,game,catalog):
+    """Decode only referenced projectile RMD/RLE sequences, caching payloads."""
+    from client_assets import Converter
+    path=game/'data/client-art.json';art=json.loads(path.read_text())
+    c=Converter(client,game/'art');c.meta=art['images'];mapping={};issues=[]
+    for row in catalog['skills']:
+        if row['mode']=='pending' or not row['projectile']:continue
+        try:
+            _,sequences=c.rmd('Bul',row['projectile']);directions={}
+            for facing,seq_index in enumerate((1,2,3,4,6,7,8,9)):
+                if seq_index>=len(sequences):continue
+                frames=[]
+                for index in sequences[seq_index]:
+                    try:frames.append(c.compose('Bul',row['projectile'],index))
+                    except ValueError as error:
+                        if str(error)!='empty row':raise
+                        frames.append('') # Intentional invisible animation frame.
+                directions[str(facing)]=frames
+            if any(any(frame for frame in seq) for seq in directions.values()):mapping[str(row['id'])]=directions
+        except (KeyError,ValueError,IndexError) as e:issues.append({'id':row['id'],'error':str(e)})
+    art['images']=c.meta;art['skill_projectiles']=mapping;art['skill_projectile_issues']=issues
+    path.write_text(json.dumps(art,separators=(',',':')))
+    return {'projectile_skills':len(mapping),'projectile_issues':issues}
+
 if __name__=='__main__':
     p=argparse.ArgumentParser(description=__doc__)
     p.add_argument('client',type=Path)
@@ -104,4 +133,4 @@ if __name__=='__main__':
     p.add_argument('--game',type=Path,default=Path('game'));a=p.parse_args()
     result=build(a.server,a.client)
     (a.game/'data/skills.json').write_text(json.dumps(result,ensure_ascii=False,separators=(',',':')))
-    print(json.dumps({**result['summary'],**icons(a.client,a.game,result)}))
+    print(json.dumps({**result['summary'],**icons(a.client,a.game,result),**projectiles(a.client,a.game,result)}))

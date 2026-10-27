@@ -7,9 +7,9 @@ No rm-lib implementation is copied; its documented layout is a format reference.
 
 The original server contains 114 named player entries (105 normal, nine DP),
 including distinct honor variants of several attacks. All 114 have localized
-names, descriptions, icons and requirements. 49 entries have supported offline
-behavior; 65 remain references and cannot be cast or assigned. This is not a
-claim of 49 unique skills, complete class trees or original combat fidelity.
+names, descriptions, icons and requirements. 61 entries have supported offline
+behavior; 53 remain references and cannot be cast or assigned. This is not a
+claim of 61 unique skills, complete class trees or original combat fidelity.
 
 36 matching RMA records differ from the server in one or more numeric fields.
 In particular, original Philar Heal unlocks at level 10 and Soul Sphere at 50;
@@ -41,8 +41,9 @@ The 0.8-second per-skill recovery is an offline pacing rule, not a recovered
 original cooldown. Failed casts consume no MP. Training Strike remains a clearly
 marked non-original fallback. Three assignable slots, cooldowns, buffs and honor
 are saved; timer restoration subtracts elapsed real time. Old saves get suitable
-class defaults. New characters remain neutral: original honor rewards are not
-recovered, so honor branches are shown but remain locked in normal progression.
+class defaults. New characters start neutral. Original signed reputation changes now apply on
+creature defeat up to the initial ±100 cap. Higher caps require quest flags
+that have not been restored; branches above that cap remain locked.
 DP, resurrection, gates, PvP/party mechanics, advanced effects and the complete
 original combat pipeline are not implemented. Blood Sun's modified 746-skill
 catalogue is retained for comparison; it is not merged into original gameplay.
@@ -50,3 +51,20 @@ catalogue is retained for comparison; it is not merged into original gameplay.
 Run `python3 -m unittest discover -s tests`, `tools/test_recovered_rules.py`, and
 Godot scripts `res://tests/skills.gd` / `res://tests/skill_ui.gd`. The latter tests
 actual GUI input, binding and touch casting; use a rendered display for captures.
+
+
+v0.11 adds Sandman/Morpheus/Obscurity sleep (damage wakes the target), Cold Cell,
+Dark Curtain, Dark Sword, Ice Arrow, Vampiric Touch, Mistress Vampire, Horror,
+and two additional invisibility variants. The damage, crowd-control and AI
+integration remain offline adaptations: blindness currently prevents melee hits,
+freeze prevents movement/attacks, fear drives nearby creatures away, and
+invisibility suppresses aggression until the player attacks. Original lifesteal
+ratios are 30% for Vampiric Touch and 50% for Mistress Vampire, applied to actual
+HP removed (bounded on overkill). The full original hit/defense pipeline is not
+restored. Respawns clear status effects from the previous life.
+
+Original projectile art is decoded for 20 supported entries from the referenced
+Bul RMD/RLE sequences. Direction order is the eight original sequence slots;
+empty rows remain transparent frames. Flight timing and rendering integration
+are reconstructed; combat resolves immediately. No substitute graphics or
+Blood Sun gameplay tables are admitted by this importer.

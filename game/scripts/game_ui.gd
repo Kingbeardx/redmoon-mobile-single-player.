@@ -183,6 +183,7 @@ func change_stat(attribute: String,delta: int) -> void:
 func show_journal() -> void:
 	open_page("JOURNEY & OPTIONS","journal")
 	label(scene.world.objective(),content,30)
+	label("HONOR %+d / ±%d · Creature labels show the change for defeating them." % [scene.world.honor,scene.world.honor_cap()],content,24)
 	var scroll:=ScrollContainer.new();scroll.size_flags_vertical=Control.SIZE_EXPAND_FILL;content.add_child(scroll)
 	var list:=VBoxContainer.new();list.size_flags_horizontal=Control.SIZE_EXPAND_FILL;scroll.add_child(list)
 	button("SAVE GAME",func():scene._save();show_journal(),list)
@@ -351,7 +352,8 @@ func show_skills() -> void:
 	if selected_skill in [1,2]:mana_text="1 MP per 2 HP restored"
 	label("Level %d  ·  %s\nRange %s tiles  ·  %s" % [int(row["level"]),mana_text,str(row["range"]),"AREA" if bool(row["area"]) else "SINGLE / SELF"],details,25)
 	var honor: int=int(row["honor"])
-	if honor!=0:label("Honor required: %+d · Your honor: %+d\nHonor rewards are not yet available in this offline adventure." % [honor,scene.world.honor],details,25)
+	if honor!=0:label("Honor required: %+d · Your honor: %+d\nDefeat creatures marked with the honor change you want.
+Current cap: ±100. Higher caps need quests not yet restored." % [honor,scene.world.honor],details,25)
 	if row["mode"]=="pending":label("This original skill is recorded here, but its effects are not playable yet."+(" It needs the special DP system." if int(row["kind"])==1 else ""),details,25)
 	else:label("Original requirements and icons. Combat effects are reconstructed for offline play."+(" Nearby-ally healing applies to you in single-player." if row["mode"]=="heal" and selected_skill!=1 else ""),details,23)
 	label("YOUR HOTBAR",details,25)

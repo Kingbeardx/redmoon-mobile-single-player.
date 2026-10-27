@@ -437,6 +437,12 @@ func _draw() -> void:
 
 	for effect in world.skills.effects:
 		var pos: Vector2=iso(Vector2(effect["x"],effect["y"]))+camera_origin
+		var frames: Array=art.get("skill_projectiles",{}).get(str(effect.get("skill_id",0)),{}).get(str(effect.get("facing",6)),[])
+		if not frames.is_empty():
+			var progress: float=clampf(1-float(effect["remaining"])/.65,0,1)
+			var start: Vector2=iso(Vector2(effect["start_x"],effect["start_y"]))+camera_origin
+			var projectile: Vector2=start.lerp(pos,progress)+Vector2(0,-30)
+			_draw_image(str(frames[mini(frames.size()-1,int(progress*frames.size()))]),projectile)
 		var tint:=Color("7ee8c1") if effect["mode"]=="heal" else Color("87cefa")
 		tint.a=clampf(float(effect["remaining"])/.65,0,1)
 		draw_arc(pos+Vector2(0,-10),18+(1-tint.a)*26,0,TAU,32,tint,2,true)
@@ -447,6 +453,13 @@ func _draw() -> void:
 func _draw_actor(point: Vector2, is_player: bool, enemy: Dictionary) -> void:
 	if enemy.get("npc", false):
 		draw_string(ThemeDB.fallback_font, point + Vector2(-35,-65), str(enemy.get("npc_name","NPC")), HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color.GOLD)
+	if not is_player and not enemy.get("npc",false):
+		var change: int=world.expected_honor(int(enemy.get("monster_id",0)))
+		if change!=0:draw_string(ThemeDB.fallback_font,point+Vector2(-34,-78),"Honor %+d" % change,HORIZONTAL_ALIGNMENT_LEFT,-1,12,Color("8ed8f0") if change>0 else Color("f0a590"))
+		var state_text: String=""
+		for ailment in ["sleep","freeze","blind","root","slow","stun"]:
+			if float(enemy.get(ailment+"_time",0))>0:state_text=ailment.to_upper();break
+		if not state_text.is_empty():draw_string(ThemeDB.fallback_font,point+Vector2(-20,-94),state_text,HORIZONTAL_ALIGNMENT_LEFT,-1,12,Color("ddc2f2"))
 	var appearance: int = world.character_id if is_player else int(enemy.get("appearance",world.appearance(int(enemy.get("monster_id", 0)))))
 	var sequences: Array = art.get("actors", {}).get(str(appearance), [])
 	if not sequences.is_empty():

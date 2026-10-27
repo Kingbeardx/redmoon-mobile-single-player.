@@ -25,6 +25,7 @@ var character_id: int = 1
 var mana: int = 50
 var bounty_claimed: bool = false
 var honor: int = 0
+var monster_metadata: Dictionary={}
 var skills=preload("res://scripts/skill_system.gd").new()
 var motion: Vector2 = Vector2.ZERO
 var facing: int = 6
@@ -104,6 +105,8 @@ func initialize(root: String = "res://data") -> bool:
 		return false
 	if tables is Dictionary:
 		content = tables
+		monster_metadata.clear()
+		for monster in content.get("monsters",[]):monster_metadata[int(monster["id"])]=monster
 	else:
 		load_error = "Monster content is missing; map exploration is available."
 	var initial: int = int(catalog[0].get("id", 0))
@@ -210,6 +213,12 @@ func spawn_enemies() -> void:
 			if ad<900 and bd<900:
 				return float(a.get("respawn_seconds",60))<float(b.get("respawn_seconds",60))
 			return ad<bd)
+	# Keep both original factions represented in the bounded population.
+	for sign_needed in [-1,1]:
+		var candidate: Dictionary={}
+		for row in candidates:
+			if signi(monster_reputation(int(row["monster_id"])))==sign_needed:candidate=row;break
+		if not candidate.is_empty():candidates.erase(candidate);candidates.push_front(candidate)
 	# A bounded sample, not original MMO population. Every point stays inside its
 	# recovered spawn rectangle, with passability checks against the decoded map.
 	for i in range(MAX_ENEMIES):
@@ -259,6 +268,10 @@ func tick(delta: float, direction: Vector2) -> void:
 		var distance: float = position.distance_to(player)
 		enemy["cooldown"] = maxf(0.0, float(enemy["cooldown"]) - dt)
 		if not skills.active("disguise").is_empty():continue
+		if float(enemy.get("sleep_time",0))>0 or float(enemy.get("freeze_time",0))>0:continue
+		if not skills.active("fear_aura").is_empty() and distance<8:
+			var fleeing: Vector2=move_entity(position,player.direction_to(position)*1.1*dt)
+			enemy["x"]=fleeing.x;enemy["y"]=fleeing.y;enemy["moving"]=true;continue
 		if float(enemy.get("stun_time",0))>0:continue
 		if distance < 8.0 and distance > 1.35:
 			if float(enemy.get("root_time",0))>0:continue
@@ -281,7 +294,7 @@ func tick(delta: float, direction: Vector2) -> void:
 			enemy["x"] = position.x
 			enemy["y"] = position.y
 		elif distance <= 1.6 and float(enemy["cooldown"]) <= 0.0 and clear_sight(position,player) and arrival_grace<=0:
-			receive_damage(maxi(1,4-armor_bonus))
+			if float(enemy.get("blind_time",0))<=0:receive_damage(maxi(1,4-armor_bonus))
 			enemy["cooldown"] = 1.4
 	if hp <= 0 and adventure_started:
 		enter_map(9)
@@ -332,11 +345,15 @@ func attack() -> bool:
 func damage_enemy(target: Dictionary,amount: int) -> void:
 	if not bool(target.get("alive",false)):return
 	if float(target.get("weaken_time",0))>0:amount=int(ceil(amount/0.75))
+	target["sleep_time"]=0
 	target["hp"]=maxi(0,int(target["hp"])-amount)
 	if int(target["hp"]) <= 0:
 		target["alive"] = false
 		target["respawn_timer"] = maxf(1,float(target.get("respawn_seconds",60)))
 		defeated += 1
+		var previous_honor: int=honor
+		honor=honor_after_kill(honor,monster_reputation(int(target["monster_id"])))
+		if honor!=previous_honor:skills.effects.append({"x":target["x"],"y":target["y"],"mode":"honor","remaining":1.2,"label":"Honor %+d" % (honor-previous_honor)})
 		if adventure_started and tutorial_stage==2 and map_id==0:
 			tutorial_kills+=1
 			if tutorial_kills>=3: tutorial_stage=3
@@ -400,6 +417,7 @@ func restore_map_state(state: Dictionary) -> void:
 
 	advance_respawns(0)
 	ensure_respawn_mix()
+	ensure_faction_mix()
 
 func save_game(path: String = "user://progress.json") -> Error:
 	remember_map()
@@ -965,6 +983,7 @@ func advance_respawns(seconds: float) -> void:
 		var home:=Vector2(float(enemy.get("home_x",enemy["x"])),float(enemy.get("home_y",enemy["y"])))
 		if not home.is_finite() or not can_stand(home):home=find_start([int(home.x),int(home.y)])
 		enemy["x"]=home.x;enemy["y"]=home.y;enemy["hp"]=int(enemy.get("max_hp",36));enemy["alive"]=true;enemy["cooldown"]=1.4
+		skills.clear_enemy_status(enemy)
 
 func equipment_reason(key: String,hero: int=-1) -> String:
 	var item: Dictionary=item_metadata.get(key,{})
@@ -1006,3 +1025,38 @@ func ensure_respawn_mix() -> void:
 	for enemy in enemies:
 		if float(enemy.get("respawn_seconds",60))<=60:fast.append(enemy)
 	enemies=previous.slice(0,MAX_ENEMIES-mini(4,fast.size()))+fast.slice(0,4)
+
+
+func monster_reputation(id: int) -> int:
+	return int(monster_metadata.get(id,{}).get("reputation",0))
+
+func honor_cap() -> int:return 100 # Higher caps require original quest flags.
+
+func honor_after_kill(current: int,reputation: int) -> int:
+	if reputation==0:return current
+	var step: int=mini(10,(absi(reputation)-1)/100+1)*signi(reputation)
+	if current==0:return -step
+	if current>0:
+		if step>0:return maxi(0,current-step)
+		return mini(honor_cap(),current-step) if current<honor_cap() else current
+	if step<0:return mini(0,current-step)
+	return maxi(-honor_cap(),current-step) if current>-honor_cap() else current
+
+func expected_honor(id: int) -> int:
+	return honor_after_kill(honor,monster_reputation(id))-honor
+
+func ensure_faction_mix() -> void:
+	var signs: Array=[]
+	for enemy in enemies:
+		var faction: int=signi(monster_reputation(int(enemy["monster_id"])))
+		if faction!=0 and not signs.has(faction):signs.append(faction)
+	if signs.size()==2:return
+	var possible: bool=false
+	for row in content.get("spawns",[]):
+		if int(row.get("map_id",-1))==map_id and int(row.get("quantity",0))>0 and monster_reputation(int(row["monster_id"]))!=0:possible=true;break
+	if not possible:return
+	var previous: Array=enemies;enemies=[];spawn_enemies();var missing: Array=[]
+	for enemy in enemies:
+		var faction: int=signi(monster_reputation(int(enemy["monster_id"])))
+		if faction!=0 and not signs.has(faction):missing.append(enemy);signs.append(faction)
+	enemies=previous.slice(0,MAX_ENEMIES-missing.size())+missing

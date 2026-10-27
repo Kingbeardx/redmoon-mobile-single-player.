@@ -10,7 +10,7 @@ CLIENT=Path('/workspace/scratch/client/Redmoon')
 class Skills(unittest.TestCase):
  @classmethod
  def setUpClass(cls):cls.catalog=build(SERVER,CLIENT);cls.rows={r['id']:r for r in cls.catalog['skills']}
- def test_count(self):self.assertEqual(self.catalog['summary'],{'player_skills':114,'reconstructed':49,'reference_only':65})
+ def test_count(self):self.assertEqual(self.catalog['summary'],{'player_skills':114,'reconstructed':61,'reference_only':53})
  def test_server_unlocks_take_priority(self):
   self.assertEqual(self.rows[3]['level'],50);self.assertEqual(self.rows[3]['client_differences']['level']['client'],10)
  def test_names_match_icon_not_slot(self):self.assertEqual(self.rows[2]['name'],'Heal');self.assertEqual(self.rows[3]['name'],'Soul Sphere')
@@ -19,7 +19,7 @@ class Skills(unittest.TestCase):
  def test_area_range(self):self.assertTrue(self.rows[12]['area']);self.assertEqual(self.rows[12]['range'],4)
  def test_weapon_requirement(self):self.assertEqual(self.rows[26]['weapon'],'sword');self.assertEqual(self.rows[51]['weapon'],'firearm');self.assertEqual(self.rows[88]['weapon'],'bow')
  def test_special_not_generic_attack(self):self.assertEqual(self.rows[91]['mode'],'pending');self.assertEqual(self.rows[91]['kind'],1)
- def test_advanced_not_silently_generic(self):self.assertEqual(self.rows[27]['mode'],'pending');self.assertEqual(self.rows[6]['mode'],'pending')
+ def test_advanced_not_silently_generic(self):self.assertEqual(self.rows[29]['mode'],'pending');self.assertEqual(self.rows[6]['mode'],'pending')
  def test_record_bounds(self):
   with self.assertRaises(FormatError):fields(b'\x00'*37)
  def test_mp_formula(self):

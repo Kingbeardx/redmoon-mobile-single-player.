@@ -303,3 +303,17 @@ original server. See [skill evidence and limits](docs/skills-reconstruction.md).
 Regenerate with `python3 tools/skill_import.py /path/to/Redmoon`. The importer
 requires the supplied 3.8 server skill table and a decoded client-art manifest.
 Original icons and generated game data remain outside source control.
+
+## v0.11 expanded effects and original honor gains
+
+61 original skill entries now have reconstructed behavior; 53 remain references.
+New effects include sleep (wakes on damage), freeze, blindness, fear, invisibility,
+and two life-draining attacks. Original projectile art is included for 20 entries;
+flight timing and combat effects remain adapted to the offline model.
+
+Defeating creatures with nonzero original reputation now changes honor using the
+server's signed arithmetic. Creature labels show the prospective change, and
+JOURNEY shows your honor and cap. The initial cap is ±100; original quests that
+raise it are not restored. Source faction groups are retained in the bounded
+population, including old saves. Respawns clear effects from the previous life.
+See [honor evidence and limits](docs/honor-reconstruction.md).

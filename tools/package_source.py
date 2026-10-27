@@ -24,6 +24,15 @@ EVIDENCE = ('archive-manifest.json', 'pe-report.json', 'coff-symbols.json',
             'v09_features','skills','skill_ui')))
 
 
+EVIDENCE += ('skills-evidence.json', 'skills-evidence.asm', 'v11-build.json',
+             'v11-projectile.png', 'v11-skills.png', 'v11-python.log', 'v11-rules.log',
+             *('v11-'+name+'.log' for name in ('smoke','adventure','input_smoke',
+             'upstream_features','recovery_and_market','recovered_items','new_adventure',
+             'doctor_dialogue','inventory_dialogue','creation_ui','accessibility',
+             'end_to_end','music_playback','v09_features','skills','skill_ui',
+             'advanced_skills','advanced_ui')))
+
+
 def main():
     OUTPUT.parent.mkdir(parents=True, exist_ok=True)
     files = [ROOT / 'README.md', ROOT / 'requirements-analysis.txt', ROOT / '.gitignore']

@@ -96,13 +96,16 @@ func tick(delta: float) -> void:
 	for e in effects:e["remaining"]-=seconds
 	effects=effects.filter(func(e: Dictionary)->bool:return e["remaining"]>0)
 	for enemy in world.enemies:
-		for name in ["root_time","weaken_time","slow_time","stun_time"]:
+		for name in ["root_time","weaken_time","slow_time","stun_time","sleep_time","freeze_time","blind_time"]:
 			if enemy.has(name):enemy[name]=maxf(0,float(enemy[name])-seconds)
 
 func active(mode: String) -> Dictionary:
 	for buff in buffs.values():
 		if buff["mode"]==mode:return buff
 	return {}
+
+func clear_enemy_status(enemy: Dictionary) -> void:
+	for name in ["root","weaken","slow","stun","sleep","freeze","blind"]:enemy.erase(name+"_time")
 
 func factor(mode: String) -> float:
 	var buff: Dictionary=active(mode)
@@ -125,7 +128,7 @@ func cast(id: int) -> bool:
 	var row: Dictionary=entry(id);var mode: String=str(row["mode"]);var used: int=cost(id)
 	if world.mana<used:world.message="Not enough mana for "+row["name"]+".";return false
 	var targets: Array=[]
-	var offensive: bool=mode in ["damage","root","weaken","slow"]
+	var offensive: bool=mode in ["damage","root","weaken","slow","sleep","freeze","blind","damage_blind","damage_freeze","leech"]
 	if offensive:
 		var limit: float=maxf(1,float(row["range"]))
 		for enemy in world.enemies:
@@ -140,13 +143,19 @@ func cast(id: int) -> bool:
 	world.attack_cooldown=.45;world.attack_flash=.18;cooldowns[id]=RECOVERY
 	if offensive:break_disguise()
 	var amount: int=0
-	if mode=="damage":
+	if mode in ["damage","damage_blind","damage_freeze","leech"]:
 		# Reuse the current offline combat base; full original attack pipeline is
 		# not recovered. Apply the original skill's percentage and actual range.
 		amount=maxi(1,int((12+world.weapon_bonus+(world.level-1)*2)*float(row["multiplier"])/100.0))
 		for enemy in targets:
+			var before_hp: int=int(enemy["hp"])
 			world.damage_enemy(enemy,amount)
-			effects.append({"x":enemy["x"],"y":enemy["y"],"mode":mode,"remaining":.65,"label":"−%d" % amount})
+			var actual_damage: int=before_hp-int(enemy["hp"])
+			if mode=="leech":world.hp=mini(world.max_hp(),world.hp+actual_damage*int(row["leech_percent"])/100)
+			if mode in ["damage_blind","damage_freeze"] and bool(enemy["alive"]):
+				var ailment: String="blind_time" if mode=="damage_blind" else "freeze_time"
+				enemy[ailment]=maxf(1,world.effective_stat("spirit")/20+int(row["duration_base"]))
+			effects.append({"skill_id":id,"start_x":world.player.x,"start_y":world.player.y,"facing":world.facing_for(world.player.direction_to(Vector2(enemy["x"],enemy["y"]))),"x":enemy["x"],"y":enemy["y"],"mode":mode,"remaining":.65,"label":"−%d" % amount})
 	elif mode=="heal":
 		amount=used*2 if id in [1,2] else world.max_hp()-world.hp
 		world.hp=mini(world.max_hp(),world.hp+amount)
@@ -156,7 +165,7 @@ func cast(id: int) -> bool:
 		for enemy in targets:
 			enemy[mode+"_time"]=duration
 			if int(row["effect"])==16:enemy["stun_time"]=duration
-			effects.append({"x":enemy["x"],"y":enemy["y"],"mode":mode,"remaining":.65,"label":row["name"]})
+			effects.append({"skill_id":id,"start_x":world.player.x,"start_y":world.player.y,"facing":world.facing_for(world.player.direction_to(Vector2(enemy["x"],enemy["y"]))),"x":enemy["x"],"y":enemy["y"],"mode":mode,"remaining":.65,"label":row["name"]})
 	else:
 		var duration: float=maxf(1,world.effective_stat("spirit")/20+int(row["duration_base"]))
 		buffs[id]={"mode":mode,"remaining":duration,"multiplier":row["multiplier"],"name":row["name"]}
@@ -187,7 +196,7 @@ func restore(saved: Dictionary) -> void:
 		for key in prior:
 			var id: int=int(key);var row: Dictionary=entry(id);var old: Variant=prior[key]
 			if row.is_empty() or int(row.get("hero",-1))!=world.character_id or not old is Dictionary:continue
-			if row["mode"] not in ["disguise","attack_up","haste","mana_shield","barrier","reload","range_up"]:continue
+			if row["mode"] not in ["disguise","attack_up","haste","mana_shield","barrier","reload","range_up","fear_aura"]:continue
 			if not world.valid_number(old.get("remaining")):continue
 			var remaining: float=minf(3600,float(old["remaining"])-away)
 			if remaining>0:buffs[id]={"mode":row["mode"],"remaining":remaining,"multiplier":row["multiplier"],"name":row["name"]}
