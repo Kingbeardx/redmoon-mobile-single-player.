@@ -4,7 +4,7 @@ Android game rebuilt from the supplied server data and the RMA 7.0 client.
 
 ## Play
 
-Install `build/Redmoon-Mobile-v0.5.apk` on ARM64 Android 7.0 or newer.
+Install `build/Redmoon-Mobile-v0.6.apk` on ARM64 Android 7.0 or newer.
 Use the movement pad and ATTACK/HEAL buttons. BAG / TALK opens inventory,
 equipment, the skill attack, a one-time offline bounty and nearby NPC shops.
 Gold NPC markers identify interaction locations. Use the upper-right TRAVEL menu for connected locations and the beginner town guide. Progress saves locally, automatically and with SAVE. No server/login needed.
@@ -104,7 +104,7 @@ python3 tools/pack_art.py --archive /path/outside/game/unused-art
 ```
 
 Music rendering requires Linux FluidSynth, a GM soundfont and ffmpeg. The generated
-art/audio remains outside Git. Version 0.5 is Android debug-signed with the same
+art/audio remains outside Git. Version 0.6 is Android debug-signed with the same
 package and development key as the earlier build so an in-place upgrade should
 retain saves. No physical Android/iOS device testing has been performed.
 
@@ -164,3 +164,22 @@ training rewards, banking and persistence. `creation_ui.gd` drives the creation,
 town travel, combat, Doctor return and food purchase through interface controls.
 Use an isolated temporary XDG_DATA_HOME for each test process so tests do not
 modify player saves. Rendered suites require an active display (Xvfb works).
+
+## Version 0.6 — readable view and touch name entry
+
+Creation now has nine portrait buttons and a large selected character showcase
+with a dark/gold presentation using original Redmoon sprites. The name field has
+an explicit EDIT NAME button and a built-in touch keyboard (letters, digits,
+space, clear, delete, done and cancel); it does not require Android's native IME.
+Physical keyboard editing remains available. A default hero name lets a player
+start immediately; an emptied name falls back to the selected hero's name.
+
+Gameplay defaults to 2x zoom. VIEW + / VIEW − adjust the camera between 1.25x and
+3x; the preference persists independently of character saves. UI text, health
+bars, controls and inventory rows are larger, and objectives have a dark backdrop.
+The world transform scales tiles, objects, actors and attack effects together;
+HUD and minimap remain at screen scale.
+
+The accessibility suite creates a named character using actual GUI pointer
+routing and verifies touch-event name entry through the engine's mouse emulation.
+These are desktop renderer/input tests, not Android hardware or OS keyboard tests.

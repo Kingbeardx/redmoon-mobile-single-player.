@@ -9,7 +9,9 @@ func capture() -> void:
 	for _i in range(10):
 		await process_frame
 	var args := OS.get_cmdline_user_args()
-	if args.size()>1 and args[1]=="creation": scene.frontend.show_creation()
+	if args.size()>1 and args[1] in ["creation","keyboard"]:
+		scene.frontend.show_creation()
+		if args[1]=="keyboard": scene.frontend.open_keyboard()
 	elif args.size()>1 and args[1]=="play": scene.frontend.close_for_play()
 	if args.size()>1 and args[1]=="inventory":
 		scene.world.inventory={"1:1":1,"2:1":1,"4:1":2}

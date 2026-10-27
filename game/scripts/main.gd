@@ -41,9 +41,13 @@ var ready_world: bool = false
 var ui_elapsed: float = 0.0
 var show_overlay: bool = false
 var camera_origin := Vector2.ZERO
+var world_zoom: float=2.0
 
 func _ready() -> void:
 	RenderingServer.set_default_clear_color(Color(0.027, 0.039, 0.059))
+	var options:=ConfigFile.new()
+	if options.load("user://accessibility.cfg")==OK:
+		world_zoom=clampf(float(options.get_value("view","zoom",2.0)),1.25,3.0)
 	_build_ui()
 	ready_world = world.initialize()
 	var loaded_art = world.read_json("res://data/client-art.json")
@@ -81,7 +85,7 @@ func _style(background: Color, border: Color, radius: int = 10) -> StyleBoxFlat:
 func _label(text_value: String, font_size: int, color: Color = WHITE) -> Label:
 	var label := Label.new()
 	label.text = text_value
-	label.add_theme_font_size_override("font_size", font_size)
+	label.add_theme_font_size_override("font_size", maxi(24,int(font_size*1.25)))
 	label.add_theme_color_override("font_color", color)
 	label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	root_ui.add_child(label)
@@ -90,7 +94,7 @@ func _label(text_value: String, font_size: int, color: Color = WHITE) -> Label:
 func _button(text_value: String, fill: Color, border: Color = Color(0.25, 0.32, 0.4)) -> Button:
 	var button := Button.new()
 	button.text = text_value
-	button.add_theme_font_size_override("font_size", 19)
+	button.add_theme_font_size_override("font_size", 28)
 	button.add_theme_color_override("font_color", WHITE)
 	button.add_theme_stylebox_override("normal", _style(fill, border))
 	button.add_theme_stylebox_override("hover", _style(fill.lightened(0.1), border.lightened(0.2)))
@@ -116,11 +120,11 @@ func _build_ui() -> void:
 	title.name = "Title"
 	var badge := _label("OFFLINE ADVENTURE", 13, Color(0.98, 0.58, 0.38))
 	badge.name = "Badge"
-	var note := _label("Original client artwork · offline adventure · reconstructed rules", 14, MUTED)
+	var note := _label("", 24, WHITE)
 	note.name = "Note"
 	location_label = _label("", 16, WHITE)
 	map_select = OptionButton.new()
-	map_select.add_theme_font_size_override("font_size", 16)
+	map_select.add_theme_font_size_override("font_size", 26)
 	map_select.add_theme_stylebox_override("normal", _style(INK, Color(0.25, 0.32, 0.4)))
 	map_select.focus_mode = Control.FOCUS_NONE
 	map_select.item_selected.connect(_change_map)
@@ -151,12 +155,12 @@ func _build_ui() -> void:
 		if not OS.has_feature("mobile"):
 			_heal())
 	save_button = _button("SAVE", INK)
-	save_button.add_theme_font_size_override("font_size", 15)
+	save_button.add_theme_font_size_override("font_size", 26)
 	save_button.pressed.connect(_save)
 	var reset := _button("RESET", INK)
 	reset.name = "Reset"
 	reset.text="MENU"
-	reset.add_theme_font_size_override("font_size", 13)
+	reset.add_theme_font_size_override("font_size", 26)
 	reset.pressed.connect(func():
 		_save()
 		frontend.has_save=true
@@ -166,37 +170,39 @@ func _build_ui() -> void:
 	reset_dialog.dialog_text = "This clears this device's prototype save and restarts the current map."
 	reset_dialog.confirmed.connect(func(): world.reset_progress(); _update_ui())
 	root_ui.add_child(reset_dialog)
+	var closer:=_button("VIEW +",INK);closer.name="ZoomIn";closer.pressed.connect(func():set_zoom(world_zoom+0.25))
+	var farther:=_button("VIEW −",INK);farther.name="ZoomOut";farther.pressed.connect(func():set_zoom(world_zoom-0.25))
 
 func _layout() -> void:
-	var viewport: Vector2 = get_viewport_rect().size
-	root_ui.size = viewport
-	root_ui.get_node("TopPanel").set_position(Vector2.ZERO)
-	root_ui.get_node("TopPanel").set_size(Vector2(viewport.x, 108))
-	root_ui.get_node("Title").set_position(Vector2(28, 14))
-	root_ui.get_node("Badge").set_position(Vector2(204, 25))
-	root_ui.get_node("Note").set_position(Vector2(28, 54))
-	location_label.position = Vector2(28, 79)
-	map_select.position = Vector2(viewport.x - 330, 16)
-	map_select.size = Vector2(302, 44)
-	save_button.position = Vector2(viewport.x - 220, 68)
-	save_button.size = Vector2(92, 30)
-	root_ui.get_node("Reset").set_position(Vector2(viewport.x - 120, 68))
-	root_ui.get_node("Reset").set_size(Vector2(92, 30))
-	root_ui.get_node("BottomPanel").set_position(Vector2(0, viewport.y - 100))
-	root_ui.get_node("BottomPanel").set_size(Vector2(viewport.x, 100))
-	joystick.position = Vector2(24, viewport.y - 192)
-	joystick.size = Vector2(156, 156)
-	stats.position = Vector2(208, viewport.y - 87)
-	hp_bar.position = Vector2(208, viewport.y - 56)
-	hp_bar.size = Vector2(260, 8)
-	status.position = Vector2(208, viewport.y - 40)
-	status.size = Vector2(maxf(100, viewport.x - 530), 24)
-	status.clip_text = true
-	help_label.position = Vector2(208, viewport.y - 120)
-	attack_button.position = Vector2(viewport.x - 156, viewport.y - 184)
-	attack_button.size = Vector2(128, 110)
-	heal_button.position = Vector2(viewport.x - 270, viewport.y - 160)
-	heal_button.size = Vector2(98, 86)
+	var viewport: Vector2=get_viewport_rect().size
+	root_ui.size=viewport
+	root_ui.get_node("TopPanel").position=Vector2.ZERO
+	root_ui.get_node("TopPanel").size=Vector2(viewport.x,164)
+	root_ui.get_node("Title").position=Vector2(24,10)
+	root_ui.get_node("Badge").visible=false
+	root_ui.get_node("Note").visible=false
+	location_label.position=Vector2(24,64)
+	location_label.size=Vector2(viewport.x-430,44);location_label.clip_text=true
+	map_select.position=Vector2(viewport.x-420,12);map_select.size=Vector2(396,60)
+	save_button.position=Vector2(viewport.x-420,80);save_button.size=Vector2(188,56)
+	root_ui.get_node("Reset").position=Vector2(viewport.x-216,80);root_ui.get_node("Reset").size=Vector2(192,56)
+	root_ui.get_node("ZoomIn").position=Vector2(24,102);root_ui.get_node("ZoomIn").size=Vector2(166,40)
+	root_ui.get_node("ZoomOut").position=Vector2(202,102);root_ui.get_node("ZoomOut").size=Vector2(166,40)
+	root_ui.get_node("BottomPanel").position=Vector2(0,viewport.y-154)
+	root_ui.get_node("BottomPanel").size=Vector2(viewport.x,154)
+	joystick.position=Vector2(20,viewport.y-220);joystick.size=Vector2(180,180)
+	stats.position=Vector2(218,viewport.y-150);stats.add_theme_font_size_override("font_size",28)
+	hp_bar.position=Vector2(218,viewport.y-72);hp_bar.size=Vector2(420,14)
+	status.position=Vector2(218,viewport.y-48);status.size=Vector2(viewport.x-240,42);status.clip_text=true
+	status.add_theme_color_override("font_color",WHITE)
+	help_label.position=Vector2(218,viewport.y-204);help_label.size=Vector2(viewport.x-574,60)
+	help_label.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART
+	help_label.add_theme_color_override("font_color",WHITE)
+	help_label.add_theme_stylebox_override("normal",_style(Color(0.025,0.035,0.05,0.94),Color(0.22,0.29,0.35)))
+	attack_button.position=Vector2(viewport.x-178,viewport.y-296);attack_button.size=Vector2(154,132)
+	heal_button.position=Vector2(viewport.x-344,viewport.y-276);heal_button.size=Vector2(154,112)
+	if inventory_panel!=null:
+		inventory_panel.position=Vector2(60,150);inventory_panel.size=Vector2(viewport.x-120,viewport.y-170)
 	queue_redraw()
 
 func _process(delta: float) -> void:
@@ -287,7 +293,7 @@ func _update_ui() -> void:
 		return
 	if map_select.item_count==0 or map_select.get_item_id(map_select.selected)!=world.map_id:
 		_sync_map_selection()
-	stats.text = "LV %d     HP %d / %d     XP %d / %d     MP %d / %d     GOLD %d" % [world.level, world.hp, world.max_hp(), world.xp, world.level * 40,world.mana,world.max_mana(),world.gold]
+	stats.text = "LEVEL %d     HP %d / %d     XP %d / %d\nMANA %d / %d     GOLD %d" % [world.level, world.hp, world.max_hp(), world.xp, world.level * 40,world.mana,world.max_mana(),world.gold]
 	hp_bar.max_value=world.max_hp()
 	hp_bar.value = world.hp
 	location_label.text = "%s · %s · X %d Y %d" % [world.player_name,world.map_name(),int(world.player.x),int(world.player.y)]
@@ -309,7 +315,9 @@ func _draw() -> void:
 				textures.erase(cached)
 				image_last_used.erase(cached)
 	object_draws.clear()
-	var viewport: Vector2 = get_viewport_rect().size
+	var screen: Vector2=get_viewport_rect().size
+	var viewport: Vector2=screen/world_zoom
+	draw_set_transform(Vector2.ZERO,0,Vector2.ONE*world_zoom)
 	camera_origin = Vector2(viewport.x * 0.5, viewport.y * 0.47) - iso(world.player)
 	var center := Vector2i(world.player)
 	var x_span: int = int(ceil(viewport.x / TILE.x)) + 10
@@ -318,7 +326,7 @@ func _draw() -> void:
 	for y in range(maxi(0, center.y - span), mini(world.height, center.y + span + 1)):
 		for x in range(maxi(0, center.x - span), mini(world.width, center.x + span + 1)):
 			var point: Vector2 = iso(Vector2(x + 0.5, y + 0.5)) + camera_origin
-			if point.x < -TILE.x or point.x > viewport.x + TILE.x or point.y < 95 or point.y > viewport.y - 84:
+			if point.x < -TILE.x or point.x > viewport.x + TILE.x or point.y < 125/world_zoom or point.y > viewport.y - 145/world_zoom:
 				continue
 			if _draw_original_tile(x, y, point):
 				continue
@@ -346,7 +354,7 @@ func _draw() -> void:
 	entities.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return a["position"].y < b["position"].y)
 	for entry in entities:
 		var point: Vector2 = iso(entry["position"]) + camera_origin
-		if point.x < -40 or point.x > viewport.x + 40 or point.y < 90 or point.y > viewport.y - 65:
+		if point.x < -40 or point.x > viewport.x + 40 or point.y < 100/world_zoom or point.y > viewport.y - 145/world_zoom:
 			continue
 		if entry.has("exit"):
 			draw_circle(point,8,TEAL)
@@ -355,11 +363,13 @@ func _draw() -> void:
 			_draw_image(str(entry["object"]),point-TILE*0.5)
 		else:
 			_draw_actor(point, bool(entry["player"]), entry.get("enemy", {}))
-	_draw_minimap(viewport)
 	if world.attack_flash > 0.0:
 		var point: Vector2 = iso(world.player) + camera_origin
 		var alpha: float = world.attack_flash / 0.18
 		draw_arc(point + Vector2(0, -8), 35 + (1.0 - alpha) * 22, -PI * 0.9, PI * 0.15, 24, Color(1.0, 0.74, 0.5, alpha), 4, true)
+
+	draw_set_transform(Vector2.ZERO)
+	_draw_minimap(screen)
 
 func _draw_actor(point: Vector2, is_player: bool, enemy: Dictionary) -> void:
 	if enemy.get("npc", false):
@@ -380,9 +390,9 @@ func _draw_actor(point: Vector2, is_player: bool, enemy: Dictionary) -> void:
 		if not is_player and not enemy.get("npc",false):
 			draw_rect(Rect2(point + Vector2(-18, -60), Vector2(36.0 * float(enemy.get("hp",36)) / 36.0, 3)), RED)
 		return
-	draw_set_transform(point, 0.0, Vector2(1.0, 0.43))
+	draw_set_transform(point*world_zoom, 0.0, Vector2(world_zoom, 0.43*world_zoom))
 	draw_circle(Vector2.ZERO, 17, Color(0.0, 0.0, 0.0, 0.5))
-	draw_set_transform(Vector2.ZERO)
+	draw_set_transform(Vector2.ZERO,0,Vector2.ONE*world_zoom)
 	if is_player:
 		draw_arc(point, 19, 0, TAU, 32, Color(0.31, 0.86, 0.8, 0.85), 1.5, true)
 		var body := PackedVector2Array([point + Vector2(0, -33), point + Vector2(11, -15), point + Vector2(7, -2), point + Vector2(-8, -2), point + Vector2(-11, -15)])
@@ -402,9 +412,9 @@ func _draw_actor(point: Vector2, is_player: bool, enemy: Dictionary) -> void:
 		draw_string(ThemeDB.fallback_font, point + Vector2(-18, -45), "#%d" % int(enemy.get("monster_id", 0)), HORIZONTAL_ALIGNMENT_LEFT, -1, 11, Color(0.75, 0.62, 0.65))
 
 func _draw_minimap(viewport: Vector2) -> void:
-	var panel := Rect2(Vector2(viewport.x - 184, 125), Vector2(156, 166))
+	var panel := Rect2(Vector2(viewport.x - 184, 158), Vector2(156, 166))
 	draw_style_box(_style(Color(0.035, 0.05, 0.075, 0.94), Color(0.18, 0.26, 0.33), 10), panel)
-	draw_string(ThemeDB.fallback_font, panel.position + Vector2(13, 22), "RECOVERED MAP", HORIZONTAL_ALIGNMENT_LEFT, -1, 12, MUTED)
+	draw_string(ThemeDB.fallback_font, panel.position + Vector2(13, 22), "MAP", HORIZONTAL_ALIGNMENT_LEFT, -1, 24, MUTED)
 	var scale_factor: float = minf(126.0 / float(world.width), 126.0 / float(world.height))
 	var origin: Vector2 = panel.position + Vector2(15, 32)
 	var step: int = maxi(1, int(ceil(maxi(world.width, world.height) / 70.0)))
@@ -444,8 +454,8 @@ func _draw_original_tile(x: int, y: int, point: Vector2) -> bool:
 
 func _build_inventory() -> void:
 	var open := _button("BAG / TALK", INK)
-	open.position = Vector2(580, 16)
-	open.size = Vector2(170, 44)
+	open.position = Vector2(400, 12)
+	open.size = Vector2(280, 60)
 	open.pressed.connect(_show_inventory)
 	inventory_panel = PanelContainer.new()
 	inventory_panel.position = Vector2(220, 115)
@@ -462,7 +472,9 @@ func _build_inventory() -> void:
 func _row(text_value: String, action: Callable) -> Button:
 	var button := Button.new()
 	button.text = text_value
-	button.custom_minimum_size.y = 42
+	button.custom_minimum_size.y = 64
+	button.add_theme_font_size_override("font_size",26)
+	button.text_overrun_behavior=TextServer.OVERRUN_TRIM_ELLIPSIS
 	button.pressed.connect(action)
 	inventory_list.add_child(button)
 	return button
@@ -608,6 +620,12 @@ func _paragraph(text: String) -> void:
 	var label:=Label.new()
 	label.text=text
 	label.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART
-	label.custom_minimum_size=Vector2(760,50)
-	label.add_theme_font_size_override("font_size",18)
+	label.custom_minimum_size=Vector2(760,80)
+	label.add_theme_font_size_override("font_size",26)
 	inventory_list.add_child(label)
+
+
+func set_zoom(value: float) -> void:
+	world_zoom=clampf(value,1.25,3.0)
+	var options:=ConfigFile.new();options.set_value("view","zoom",world_zoom);options.save("user://accessibility.cfg")
+	queue_redraw()
