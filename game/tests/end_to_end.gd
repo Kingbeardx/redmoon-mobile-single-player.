@@ -29,12 +29,10 @@ func run() -> void:
 	scene.world.inventory = {"4:1": 1}
 	scene.world.hp = 30
 	scene._show_inventory()
-	for row in scene.inventory_list.get_children():
-		if "equip/use" in row.text and "× 1" in row.text:
-			row.emit_signal("pressed")
-			break
+	scene.game_ui.item_buttons["4:1"].emit_signal("pressed")
+	scene.game_ui.item_action.emit_signal("pressed")
 	check(scene.world.hp == scene.world.max_hp(),"inventory UI uses food")
-	scene.inventory_panel.hide()
+	scene.game_ui.close()
 	scene.save_button.emit_signal("pressed")
 	var second = load("res://scripts/world.gd").new()
 	second.initialize()

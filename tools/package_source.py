@@ -8,12 +8,12 @@ OUTPUT = ROOT / 'build/redmoon-mobile-source.zip'
 INCLUDE_DIRS = ('tools', 'tests', 'docs', 'data', 'game', 'references')
 EVIDENCE = ('archive-manifest.json', 'pe-report.json', 'coff-symbols.json',
             'svMapServer-selected.asm', 'content-comparison.json',
-            'nested-map-manifest.json', 'v06-creation.png', 'v06-keyboard.png',
-            'v06-smoke.log', 'v06-adventure.log', 'v06-input_smoke.log',
-            'v06-upstream_features.log', 'v06-recovery_and_market.log',
-            'v06-recovered_items.log', 'v06-new_adventure.log',
-            'v06-creation_ui.log', 'v06-end_to_end.log', 'v06-accessibility.log',
-            'v06-python.log', 'v06-rules.log', 'v06-build.json',
+            'nested-map-manifest.json', 'v07-bag.png', 'v07-stats.png', 'v07-dialogue.png',
+            'v07-smoke.log', 'v07-adventure.log', 'v07-input_smoke.log',
+            'v07-upstream_features.log', 'v07-recovery_and_market.log',
+            'v07-recovered_items.log', 'v07-new_adventure.log',
+            'v07-creation_ui.log', 'v07-end_to_end.log', 'v07-accessibility.log', 'v07-inventory_dialogue.log',
+            'v07-python.log', 'v07-rules.log', 'v07-build.json',
             'new-character.asm', 'default-position.asm')
 
 

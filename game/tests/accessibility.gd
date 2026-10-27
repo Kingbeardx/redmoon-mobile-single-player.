@@ -51,9 +51,9 @@ func run() -> void:
 	scene.set_zoom(0);check(scene.world_zoom==1.25,"minimum zoom bound")
 	scene.set_zoom(2)
 	scene._show_inventory();await process_frame
-	check(scene.inventory_panel.size.x>=1000 and scene.inventory_list.get_child(0).get_theme_font_size("font_size")>=26,"large inventory controls")
+	check(scene.game_ui.panel.size.x>=1000 and scene.game_ui.item_buttons.size()>0,"large inventory controls")
 	check(scene.frontend.name_input.editable,"name field remains editable with hardware keyboard")
 	if DisplayServer.get_name()!="headless":
-		scene.inventory_panel.hide();await process_frame;await RenderingServer.frame_post_draw
+		scene.game_ui.close();await process_frame;await RenderingServer.frame_post_draw
 		root.get_texture().get_image().save_png("/workspace/redmoon-mobile/analysis/v06-close-view.png")
 	print("ACCESSIBILITY: %d checks, %d failures" % [checks,failures]);quit(1 if failures else 0)

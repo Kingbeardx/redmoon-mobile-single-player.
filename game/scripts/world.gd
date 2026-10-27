@@ -133,6 +133,7 @@ func enter_map(id: int, keep_current: bool = true) -> bool:
 		return false
 	if keep_current and map_id >= 0:
 		remember_map()
+	shop_available=false
 	current_map = decoded
 	map_id = id
 	width = w
@@ -339,7 +340,7 @@ func attack() -> bool:
 			bonus_points += 3 if level%100==0 else 2
 			hp = max_hp()
 			potions += 1
-			message = "Level %d · health restored, one heal gained." % level
+			message = "Level %d · +%d stat points. Open BAG → CHARACTER." % [level,3 if level%100==0 else 2]
 		else:
 			message = "Creature %d defeated · +10 prototype XP" % int(target["monster_id"])
 	else:
@@ -614,23 +615,46 @@ func cast_skill() -> bool:
 	weapon_bonus = prior
 	return hit
 
+func npc_position(npc: Dictionary) -> Vector2:
+	var b: Dictionary=npc.get("bounds",{})
+	return Vector2((float(b.get("left",0))+float(b.get("right",0)))*0.5,(float(b.get("top",0))+float(b.get("bottom",0)))*0.5)
+
+func nearest_npc() -> Dictionary:
+	var nearest: Dictionary={}
+	var distance: float=8.0
+	for npc in content.get("npcs",[]):
+		if int(npc.get("map_id",-1))!=map_id: continue
+		var delta: float=npc_position(npc).distance_to(player)
+		if delta<distance: distance=delta;nearest=npc
+	return nearest
+
+func npc_has_shop(npc: Dictionary) -> bool:
+	var name: String=str(npc.get("name","")).to_lower()
+	var merchant: bool=false
+	for role in ["vendor","store","merchant","shop","trader","armorer"]:
+		if role in name:merchant=true
+	if not merchant or int(npc.get("map_id",-1))!=map_id:return false
+	for link in content.get("map_shops",[]):
+		if int(link.get("map_id",-1))==map_id:return true
+	return false
+
+func interact_with(npc: Dictionary) -> bool:
+	shop_available=false
+	if int(npc.get("map_id",-1))!=map_id or npc_position(npc).distance_to(player)>=8:
+		message="Move closer to speak with this person."
+		return false
+	var name: String=str(npc.get("name","Traveler")).trim_prefix("+")
+	message=name+": Welcome, "+player_name+"."
+	if adventure_started and map_id==9 and name=="Doctor":
+		doctor_service();return true
+	shop_available=npc_has_shop(npc)
+	return true
+
 func interact() -> void:
-	shop_available = false
-	for npc in content.get("npcs", []):
-		if int(npc.get("map_id",-1)) != map_id:
-			continue
-		var b: Dictionary = npc["bounds"]
-		var pos := Vector2((float(b["left"])+float(b["right"]))*0.5, (float(b["top"])+float(b["bottom"]))*0.5)
-		if pos.distance_to(player) < 8:
-			message = str(npc["name"]).trim_prefix("+") + ": Welcome, "+player_name+"."
-			if adventure_started and map_id==9:
-				doctor_service()
-				return
-			for link in content.get("map_shops", []):
-				if int(link.get("map_id",-1)) == map_id:
-					shop_available = true
-			return
-	message = "Move within 8 tiles of an NPC to talk."
+	var npc:=nearest_npc()
+	if npc.is_empty():
+		shop_available=false;message="Move within 8 tiles of an NPC to talk."
+	else: interact_with(npc)
 
 func buy_heal() -> void:
 	if shop_available and gold >= 15:
@@ -741,15 +765,31 @@ func effective_stat(attribute: String) -> int:
 		value+=int(item_metadata.get(key,{}).get(attribute,0))
 	return value & 0xffffffff
 
-func max_hp() -> int:
-	var power: int=effective_stat("power")
+func hp_for(power: int) -> int:
 	return maxi(1,(50+(power/15)*(power/10)) & 0xffffffff)
 
-func max_mana() -> int:
-	var spirit: int=effective_stat("spirit")
-	if spirit<=20000:
-		return maxi(1,(50+(spirit/15)*(spirit/10)) & 0xffffffff)
+func mana_for(spirit: int) -> int:
+	if spirit<=20000: return maxi(1,(50+(spirit/15)*(spirit/10)) & 0xffffffff)
 	return maxi(1,(273*spirit-0x2a9df6) & 0xffffffff)
+
+func max_hp() -> int: return hp_for(effective_stat("power"))
+func max_mana() -> int: return mana_for(effective_stat("spirit"))
+
+func allocate_stats(changes: Dictionary, path: String="user://progress.json") -> bool:
+	var total: int=0
+	for key in changes:
+		var value: Variant=changes[key]
+		if not stats.has(key) or not valid_number(value) or float(value)<0 or float(value)!=floor(float(value)) or float(value)>bonus_points: return false
+		if int(stats[key])+int(value)>4294967295: return false
+		total+=int(value)
+	if total<=0 or total>bonus_points: return false
+	var before:=stats.duplicate();var points: int=bonus_points
+	for key in changes: stats[key]=int(stats[key])+int(changes[key])
+	bonus_points-=total
+	if save_game(path)!=OK:
+		stats=before;bonus_points=points;message="Could not save stat changes. Points were kept.";return false
+	message="Attributes increased. %d points remaining." % bonus_points
+	return true
 
 func allocate_stat(attribute: String) -> bool:
 	if bonus_points<=0 or not stats.has(attribute):

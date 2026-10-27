@@ -22,6 +22,10 @@ var music_enabled: bool = false
 var inventory_panel: PanelContainer
 var inventory_list: VBoxContainer
 
+var game_ui=preload("res://scripts/game_ui.gd").new()
+var pending_npc: Dictionary={}
+var npc_path: Array[Vector2i]=[]
+var npc_repath: float=0.0
 var frontend = preload("res://scripts/frontend.gd").new()
 var world = WorldScript.new()
 var joystick: Control
@@ -57,6 +61,7 @@ func _ready() -> void:
 	if loaded_maps is Dictionary:
 		client_maps = loaded_maps
 	_build_inventory()
+	game_ui.setup(self)
 	if ready_world:
 		var existing: bool=world.load_game()
 		_sync_map_selection()
@@ -203,16 +208,22 @@ func _layout() -> void:
 	heal_button.position=Vector2(viewport.x-344,viewport.y-276);heal_button.size=Vector2(154,112)
 	if inventory_panel!=null:
 		inventory_panel.position=Vector2(60,150);inventory_panel.size=Vector2(viewport.x-120,viewport.y-170)
+	if game_ui.panel!=null: game_ui.layout()
 	queue_redraw()
 
 func _process(delta: float) -> void:
 	if not ready_world:
 		return
-	if (frontend.panel!=null and frontend.panel.visible) or reset_dialog.visible or (inventory_panel != null and inventory_panel.visible):
+	if ui_blocked():
 		return
 	var direction: Vector2 = joystick.direction
 	if not get_viewport().gui_get_focus_owner():
 		direction += Vector2(float(Input.is_physical_key_pressed(KEY_D) or Input.is_physical_key_pressed(KEY_RIGHT)) - float(Input.is_physical_key_pressed(KEY_A) or Input.is_physical_key_pressed(KEY_LEFT)), float(Input.is_physical_key_pressed(KEY_S) or Input.is_physical_key_pressed(KEY_DOWN)) - float(Input.is_physical_key_pressed(KEY_W) or Input.is_physical_key_pressed(KEY_UP)))
+	if direction.length_squared()>0.01:
+		pending_npc.clear();npc_path.clear()
+	elif not pending_npc.is_empty():
+		direction=approach_npc(delta)
+		if game_ui.panel.visible: return
 	# Invert isometric projection so controls always follow screen directions.
 	var map_direction := direction.limit_length(1.0)
 	world.tick(delta, map_direction)
@@ -229,7 +240,7 @@ func _process(delta: float) -> void:
 func _input(event: InputEvent) -> void:
 	# Buttons rely on mouse emulation, which follows only one finger. Handle
 	# combat touches directly so a second finger works while the joystick is held.
-	if not ready_world or reset_dialog.visible or inventory_panel.visible or (frontend.panel!=null and frontend.panel.visible):
+	if not ready_world or ui_blocked():
 		return
 	if event is InputEventScreenTouch and event.pressed:
 		if attack_button.get_global_rect().has_point(event.position):
@@ -240,7 +251,7 @@ func _input(event: InputEvent) -> void:
 			get_viewport().set_input_as_handled()
 
 func _unhandled_key_input(event: InputEvent) -> void:
-	if inventory_panel.visible or (frontend.panel!=null and frontend.panel.visible) or not ready_world or not event is InputEventKey or not event.pressed or event.echo:
+	if ui_blocked() or not ready_world or not event is InputEventKey or not event.pressed or event.echo:
 		return
 	if event.physical_keycode == KEY_SPACE:
 		_attack()
@@ -293,7 +304,7 @@ func _update_ui() -> void:
 		return
 	if map_select.item_count==0 or map_select.get_item_id(map_select.selected)!=world.map_id:
 		_sync_map_selection()
-	stats.text = "LEVEL %d     HP %d / %d     XP %d / %d\nMANA %d / %d     GOLD %d" % [world.level, world.hp, world.max_hp(), world.xp, world.level * 40,world.mana,world.max_mana(),world.gold]
+	stats.text = "LEVEL %d     HP %d / %d     XP %d / %d\nMANA %d / %d     GOLD %d     POINTS %d" % [world.level, world.hp, world.max_hp(), world.xp, world.level * 40,world.mana,world.max_mana(),world.gold,world.bonus_points]
 	hp_bar.max_value=world.max_hp()
 	hp_bar.value = world.hp
 	location_label.text = "%s · %s · X %d Y %d" % [world.player_name,world.map_name(),int(world.player.x),int(world.player.y)]
@@ -318,7 +329,7 @@ func _draw() -> void:
 	var screen: Vector2=get_viewport_rect().size
 	var viewport: Vector2=screen/world_zoom
 	draw_set_transform(Vector2.ZERO,0,Vector2.ONE*world_zoom)
-	camera_origin = Vector2(viewport.x * 0.5, viewport.y * 0.47) - iso(world.player)
+	camera_origin = Vector2(viewport.x * 0.5, viewport.y * 0.62) - iso(world.player)
 	var center := Vector2i(world.player)
 	var x_span: int = int(ceil(viewport.x / TILE.x)) + 10
 	var y_span: int = int(ceil(viewport.y / TILE.y)) + 5
@@ -453,7 +464,7 @@ func _draw_original_tile(x: int, y: int, point: Vector2) -> bool:
 	return true
 
 func _build_inventory() -> void:
-	var open := _button("BAG / TALK", INK)
+	var open := _button("BAG", INK)
 	open.position = Vector2(400, 12)
 	open.size = Vector2(280, 60)
 	open.pressed.connect(_show_inventory)
@@ -480,40 +491,7 @@ func _row(text_value: String, action: Callable) -> Button:
 	return button
 
 func _show_inventory() -> void:
-	for child in inventory_list.get_children():
-		inventory_list.remove_child(child)
-		child.queue_free()
-	inventory_panel.show()
-	_row("CLOSE · resume adventure", func(): inventory_panel.hide())
-	_paragraph(world.objective())
-	if world.adventure_started:
-		_row("Town guide / travel",_travel_rows)
-		if world.map_id==9:
-			_row("Speak with Doctor / recover HP and mana",_talk_rows)
-		if world.map_id==4:
-			_row("Bank: %d gold · Deposit carried gold" % world.bank_gold,func():world.deposit_gold();_show_inventory())
-			_row("Withdraw bank gold",func():world.withdraw_gold();_show_inventory())
-	_row("Gold %d | Weapon +%d | Defeated %d | Offline bounty: defeat 10 creatures" % [world.gold, world.weapon_bonus, world.defeated], func(): pass)
-	_row("Available stat points: %d" % world.bonus_points,func():pass)
-	for attribute in ["strength","spirit","dexterity","power"]:
-		var stat_key: String=attribute
-		_row("%s %d · allocate +1" % [attribute.capitalize(),world.effective_stat(attribute)],func():world.allocate_stat(stat_key);_show_inventory())
-	_row("Claim bounty reward (10 kills): 100 gold + 3 heals", func(): world.claim_bounty(); _show_inventory())
-	_row("Power strike (20 mana) · Mana %d / %d" % [world.mana,world.max_mana()], func(): inventory_panel.hide(); world.cast_skill())
-	_row("Use nearby EXIT", func(): inventory_panel.hide(); world.use_exit(); textures.clear(); _sync_map_selection())
-	_row("Music: %s · client MIDI track" % ("ON" if music_enabled else "OFF"),func():toggle_music();_show_inventory())
-	_row("Sound: %s" % ("ON" if sounds_enabled else "OFF"), func(): sounds_enabled = not sounds_enabled; _show_inventory())
-	_row("Run: %s" % ("ON" if world.running else "OFF"), func(): world.running = not world.running; _show_inventory())
-	_row("Zone market · recovered base prices", _market_rows)
-	_row("Interact with nearby NPC / shop", _talk_rows)
-	for key in world.inventory:
-		var item_key: String = str(key)
-		if int(world.inventory[item_key])<=0:
-			continue
-		var button: Button = _row("%s × %d · equip/use\n%s" % [world.item_name(item_key), world.inventory[item_key],world.item_details(item_key)], func(): world.use_item(item_key); _show_inventory())
-		_set_item_icon(button,item_key)
-	_row("%s · %s" % [world.player_name,world.HERO_NAMES[world.character_id]], func():pass)
-	_row(world.message, func(): pass)
+	game_ui.show_bag()
 
 func _shop_rows() -> void:
 	if not world.shop_available:
@@ -543,6 +521,7 @@ func play_sound(action: String) -> void:
 	audio_players[action].play()
 
 func _market_rows() -> void:
+	game_ui.close();inventory_panel.show()
 	for child in inventory_list.get_children():
 		inventory_list.remove_child(child)
 		child.queue_free()
@@ -590,6 +569,7 @@ func _set_item_icon(button: Button,key: String) -> void:
 
 
 func _travel_rows() -> void:
+	game_ui.close();inventory_panel.show()
 	for child in inventory_list.get_children():
 		inventory_list.remove_child(child);child.queue_free()
 	_row("BACK · "+world.map_name(),_show_inventory)
@@ -604,17 +584,7 @@ func _travel_rows() -> void:
 
 
 func _talk_rows() -> void:
-	world.interact()
-	for child in inventory_list.get_children():
-		inventory_list.remove_child(child);child.queue_free()
-	_row("BACK · Inventory",_show_inventory)
-	_paragraph(world.message)
-	_paragraph(world.objective())
-	if world.shop_available:
-		_row("Browse shop stock",_market_rows)
-		_shop_rows()
-	_row("CLOSE · Resume adventure",func():inventory_panel.hide();_update_ui())
-
+	game_ui.talk_nearby()
 
 func _paragraph(text: String) -> void:
 	var label:=Label.new()
@@ -629,3 +599,52 @@ func set_zoom(value: float) -> void:
 	world_zoom=clampf(value,1.25,3.0)
 	var options:=ConfigFile.new();options.set_value("view","zoom",world_zoom);options.save("user://accessibility.cfg")
 	queue_redraw()
+
+
+func ui_blocked() -> bool:
+	return reset_dialog.visible or inventory_panel.visible or (game_ui.panel!=null and game_ui.panel.visible) or (frontend.panel!=null and frontend.panel.visible)
+
+func npc_screen_rect(npc: Dictionary) -> Rect2:
+	var point: Vector2=(iso(world.npc_position(npc))+camera_origin)*world_zoom
+	return Rect2(point+Vector2(-35,-85)*world_zoom,Vector2(70,90)*world_zoom).grow(12)
+
+func npc_at_screen(position: Vector2) -> Dictionary:
+	var area:=Rect2(Vector2(0,164),get_viewport_rect().size-Vector2(0,318))
+	if not area.has_point(position):return {}
+	var result: Dictionary={}
+	var best: float=INF
+	for npc in world.content.get("npcs",[]):
+		if int(npc.get("map_id",-1))!=world.map_id:continue
+		var rect:=npc_screen_rect(npc)
+		if rect.has_point(position):
+			var distance: float=rect.get_center().distance_squared_to(position)
+			if distance<=best:result=npc;best=distance
+	return result
+
+func _unhandled_input(event: InputEvent) -> void:
+	if not ready_world or ui_blocked():return
+	if (event is InputEventScreenTouch and event.pressed) or (event is InputEventMouseButton and event.pressed and event.button_index==MOUSE_BUTTON_LEFT):
+		var npc:=npc_at_screen(event.position)
+		if npc.is_empty():return
+		if world.npc_position(npc).distance_to(world.player)<8:game_ui.open_dialogue(npc)
+		else:
+			pending_npc=npc.duplicate(true);npc_path.clear();npc_repath=0
+			world.message="Walking to "+str(npc.get("name","NPC")).trim_prefix("+")+". Move the pad to cancel."
+		get_viewport().set_input_as_handled()
+
+func approach_npc(delta: float) -> Vector2:
+	if int(pending_npc.get("map_id",-1))!=world.map_id:
+		pending_npc.clear();return Vector2.ZERO
+	if world.npc_position(pending_npc).distance_to(world.player)<7.5:
+		var target:=pending_npc.duplicate(true);pending_npc.clear();npc_path.clear();game_ui.open_dialogue(target);return Vector2.ZERO
+	npc_repath-=delta
+	if npc_repath<=0 or npc_path.is_empty():
+		npc_repath=0.6
+		var target: Vector2=world.find_start([int(world.npc_position(pending_npc).x),int(world.npc_position(pending_npc).y)])
+		npc_path=world.navigation.get_id_path(Vector2i(world.player.floor()),Vector2i(target.floor()))
+		if not npc_path.is_empty():npc_path.pop_front()
+		if npc_path.is_empty():
+			pending_npc.clear();world.message="No clear route to this person. Try moving closer.";return Vector2.ZERO
+	while not npc_path.is_empty() and world.player.distance_to(Vector2(npc_path[0])+Vector2(0.5,0.5))<0.2:npc_path.pop_front()
+	if npc_path.is_empty():return Vector2.ZERO
+	return world.player.direction_to(Vector2(npc_path[0])+Vector2(0.5,0.5))

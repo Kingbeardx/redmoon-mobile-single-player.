@@ -25,12 +25,9 @@ func run() -> void:
 	scene.frontend.name_input.text="TestHero";scene.frontend.select_hero(2);scene.frontend._begin()
 	check(not scene.frontend.panel.visible and scene.world.map_id==9 and scene.world.player_name=="TestHero","begin enters safe town as named selected hero")
 	check(scene.map_select.get_item_text(0).contains("Hospital"),"travel menu displays town name")
-	scene._show_inventory()
-	var doctor: Button
-	for row in scene.inventory_list.get_children():
-		if row.text.begins_with("Speak with Doctor"): doctor=row;break
-	check(doctor!=null,"doctor action available")
-	if doctor!=null: doctor.emit_signal("pressed")
+	scene.game_ui.talk_nearby()
+	check(scene.game_ui.page=="dialogue" and scene.game_ui.dialogue_primary!=null,"doctor dialogue available")
+	scene.game_ui.dialogue_primary.emit_signal("pressed")
 	check(scene.world.tutorial_stage==1 and scene.world.gold==50 and scene.world.message.begins_with("Doctor:"),"doctor dialogue advances beginner objective")
 	scene._travel_rows();press_row(scene,"Travel to Street 1")
 	check(scene.world.map_id==1 and scene.world.tutorial_stage==2,"town guide UI reaches Street 1")
@@ -41,7 +38,7 @@ func run() -> void:
 		scene.world.attack_cooldown=0;scene.attack_button.emit_signal("pressed")
 	check(scene.world.tutorial_stage==3,"attack control completes training")
 	scene._travel_rows();press_row(scene,"Travel to Street 1 Hospital")
-	scene._show_inventory();press_row(scene,"Speak with Doctor")
+	scene.game_ui.talk_nearby();scene.game_ui.dialogue_primary.emit_signal("pressed")
 	check(scene.world.tutorial_stage==4 and scene.world.gold==165,"return and Doctor dialogue complete beginner journey")
 	scene._travel_rows();press_row(scene,"Travel to Street 1 Food Shop")
 	scene._market_rows()

@@ -42,7 +42,7 @@ func button(text: String, action: Callable, parent: Node=null) -> Button:
 	item.custom_minimum_size.y=60;item.pressed.connect(action);return item
 
 func show_title() -> void:
-	clear();keyboard_panel.hide();panel.show();scene.inventory_panel.hide()
+	clear();keyboard_panel.hide();panel.show();scene.inventory_panel.hide();scene.game_ui.close()
 	scene.joystick.direction=Vector2.ZERO;scene.joystick.active_touch=-1;scene.joystick.mouse_dragging=false;scene.joystick.set_process_input(false)
 	label("REDMOON",52);label("OFFLINE ADVENTURE",32)
 	label("Create your hero. Explore Street 1 and the world beyond.")

@@ -4,9 +4,9 @@ Android game rebuilt from the supplied server data and the RMA 7.0 client.
 
 ## Play
 
-Install `build/Redmoon-Mobile-v0.6.apk` on ARM64 Android 7.0 or newer.
-Use the movement pad and ATTACK/HEAL buttons. BAG / TALK opens inventory,
-equipment, the skill attack, a one-time offline bounty and nearby NPC shops.
+Install `build/Redmoon-Mobile-v0.7.apk` on ARM64 Android 7.0 or newer.
+Use the movement pad and ATTACK/HEAL buttons. BAG opens an item grid with separate CHARACTER and JOURNEY tabs. Tap an NPC
+to open their dialogue; distant NPCs can be approached automatically.
 Gold NPC markers identify interaction locations. Use the upper-right TRAVEL menu for connected locations and the beginner town guide. Progress saves locally, automatically and with SAVE. No server/login needed.
 Desktop controls: WASD/arrows, Space to attack, E to heal.
 
@@ -104,7 +104,7 @@ python3 tools/pack_art.py --archive /path/outside/game/unused-art
 ```
 
 Music rendering requires Linux FluidSynth, a GM soundfont and ffmpeg. The generated
-art/audio remains outside Git. Version 0.6 is Android debug-signed with the same
+art/audio remains outside Git. Version 0.7 is Android debug-signed with the same
 package and development key as the earlier build so an in-place upgrade should
 retain saves. No physical Android/iOS device testing has been performed.
 
@@ -183,3 +183,29 @@ HUD and minimap remain at screen scale.
 The accessibility suite creates a named character using actual GUI pointer
 routing and verifies touch-event name entry through the engine's mouse emulation.
 These are desktop renderer/input tests, not Android hardware or OS keyboard tests.
+
+## Version 0.7 — bag, attributes and NPC dialogue
+
+BAG now opens a five-column item grid with icons, quantities, equipped highlights
+and All/Gear/Food/Other filters. Tap an item to inspect its name, effects and
+requirements, then use, equip or unequip it. Near an active shop, the detail pane
+also offers selling one item. The CHARACTER tab shows available points and
+per-attribute minus/plus controls, live health/mana previews and APPLY POINTS.
+Draft changes do not spend points; closing/resetting discards them. Applying
+validates the entire allocation and saves once, rolling it back on save failure.
+The HUD and character tab show unspent points. Strength/Dexterity descriptions
+refer to equipment requirements; unimplemented original combat effects are not
+claimed by this interface.
+
+Tap NPCs in the world for a named dialogue box and portrait. Dialogue offers
+contextual Doctor training/healing, merchant stock, bank deposit/withdrawal,
+objective help and Goodbye. Tapping a distant NPC follows a recovered walkable
+path until in range; manual movement cancels approach. Conversations use new
+offline text and services, not a complete recovered original quest interpreter.
+Generic quest NPCs do not offer merchant services merely because their zone has
+shop stock. JOURNEY retains travel, exits, the offline skill/bounty and options.
+
+The new UI suspends the joystick while modal panels are visible. NPC picking
+accounts for camera zoom and HUD clipping. Integration tests use actual GUI
+clicks plus touch events at 1.25x, 2x and 3x zoom, and cover stat persistence,
+malformed/over-budget allocations, save rollback and automatic approach.

@@ -4,22 +4,23 @@ Validation date: 2026-10-26. Engine: Godot 4.5.1 stable, standard GDScript build
 All original software was inspected statically; no legacy Windows program,
 database, installer, PHP page, TCL script, or network service was run.
 
-## Version 0.6 checks
+## Version 0.7 checks
 
 - 24 Python importer/format tests and four statically recovered-rule tests passed.
-- 145 Godot checks passed: 24 core gameplay, nine adventure/persistence, five
+- 173 Godot checks passed: 24 core gameplay, nine adventure/persistence, five
   injected multitouch, 13 recovered upstream features, eight market/recovery,
   13 recovered-item/attribute rules, 32 new-adventure checks, 17 creation/UI
-  journey checks, 18 accessibility checks and six rendered end-to-end checks.
+  journey checks, 18 accessibility checks, 28 inventory/dialogue integration checks and six
+  rendered end-to-end checks.
 - Rendered UI tests ran under Xvfb/Mesa, covering movement, attack controls,
   inventory food consumption, music playback and save/reload. Inventory artwork
-  and layout were inspected in `analysis/v06-creation.png`.
+  and layout were inspected in `analysis/v07-bag.png`.
 - Independent item decoding recovered 784 active item records and icons with
   source prices, equipment slots, class masks and requirements. Binary parser
   tests verify known item values and reject truncated records.
 - Android export uses Godot 4.5.1, Java 21 and SDK/build tools 35. The APK is
   ARM64, minimum API 24, target API 35, package `org.redmoon.offlineprototype`.
-  Signing and archive/content checks are recorded in `analysis/v06-build.json`.
+  Signing and archive/content checks are recorded in `analysis/v07-build.json`.
 - Character creation, safe hospital start, Doctor introduction/training, named
   town travel, banking and source-price food purchase were exercised. All nine
   heroes received compatible starter gear. Title/creation/Continue and replacement
@@ -27,6 +28,10 @@ database, installer, PHP page, TCL script, or network service was run.
 - Name entry was driven through GUI clicks and a simulated touch event. The
   built-in keyboard, editable name, hero cards, new-character start and zoom
   persistence passed. Large text and camera output were inspected at 1280x720.
+- The new item grid, explicit use/equip/unequip actions, stat draft/apply/save
+  rollback, NPC picking at three zooms, walking into talking range and merchant
+  dialogue passed. A joystick interception regression was reproduced and fixed
+  by disabling joystick input while the new panels are open.
 - Original Windows executables remain unexecuted. Source archives and extracted
   artwork are excluded from Git. Third-party parser licenses remain attached.
 
