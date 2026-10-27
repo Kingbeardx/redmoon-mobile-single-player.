@@ -43,7 +43,9 @@ func run() -> void:
 	scene._travel_rows();press_row(scene,"Travel to Street 1 Food Shop")
 	scene._market_rows()
 	var before: int=int(scene.world.inventory.get("4:1",0))
-	press_row(scene,"Buy Goldfish")
+	for item in scene.world.zone_stock():
+		if item["key"]=="4:1":scene.game_ui.shop_selection=item["purchase_key"]
+	scene.game_ui.show_shop();scene.game_ui.shop_buy_button.emit_signal("pressed")
 	check(int(scene.world.inventory.get("4:1",0))==before+1 and scene.world.gold==115,"food shop UI purchases source-priced food")
 	scene.frontend.show_title();scene.frontend.show_creation()
 	scene.frontend.name_input.text="Replacement";scene.frontend._begin()

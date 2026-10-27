@@ -4,11 +4,11 @@ Android game rebuilt from the supplied server data and the RMA 7.0 client.
 
 ## Play
 
-Install `build/Redmoon-Mobile-v0.8.apk` on ARM64 Android 7.0 or newer.
+Install `build/Redmoon-Mobile-v0.9.apk` on ARM64 Android 7.0 or newer.
 Use the movement pad and ATTACK/HEAL buttons. BAG opens an item grid with separate CHARACTER and JOURNEY tabs. Tap an NPC
 to open their dialogue; distant NPCs can be approached automatically.
 Gold NPC markers identify interaction locations. Use the upper-right TRAVEL menu for connected locations and the beginner town guide. Progress saves locally, automatically and with SAVE. No server/login needed.
-Desktop controls: WASD/arrows, Space to attack, E to heal.
+Desktop controls: WASD/arrows, Space to attack, E to heal, Q for Strike, R for food.
 
 ## Current implementation
 
@@ -104,7 +104,7 @@ python3 tools/pack_art.py --archive /path/outside/game/unused-art
 ```
 
 Music rendering requires Linux FluidSynth, a GM soundfont and ffmpeg. The generated
-art/audio remains outside Git. Version 0.8 is Android debug-signed with the same
+art/audio remains outside Git. Version 0.9 is Android debug-signed with the same
 package and development key as the earlier build so an in-place upgrade should
 retain saves. No physical Android/iOS device testing has been performed.
 
@@ -252,3 +252,36 @@ ffmpeg and the analysis requirements are needed. Original input resources and
 converted audio remain outside Git. `music_playback.gd` checks PCM at the actual
 engine mixer, mute/unmute, persistence, missing-file fallback and zone selection.
 Desktop mixer validation is not a physical Android speaker test.
+
+## Version 0.9 — compact mobile HUD, original profiles and reliable respawns
+
+The game canvas expands to wide phone aspect ratios. Full-width header/footer
+mats are removed: health/mana/XP gauges, a character portrait, compact location
+and objective chips, and an icon hotbar float over the world. Attack, Strike,
+healing charges and quick food have direct touch controls; the existing mana
+attack is visible with its cost/cooldown. Save and optional minimap are in
+BAG → JOURNEY. Zoom controls and readable text remain available. Notifications
+fade instead of permanently occupying the bottom of the field.
+
+Shops default to compatible stock, distinguish EQUIP NOW from missing
+requirements, list permitted heroes, disable incompatible purchases and enforce
+class restrictions in the backend. Gear that needs more levels/stats can be
+bought deliberately with BUY FOR LATER. Philar and Azlar have no physical-weapon
+eligibility in the recovered tables; compatible clothing remains available.
+Original English bios and weapon hints are recovered from Message.ctf by
+`python3 tools/hero_profiles.py /path/to/Redmoon`. Creation offers STORY, SKILLS &
+EQUIPMENT. The profile clearly distinguishes playable reconstructed actions from
+incomplete original class skill trees.
+
+The original name table establishes Kitara as ID 6 and Lunarena as ID 7; the
+previous roster labels were reversed. Saves now record roster_version=2; older
+IDs 6/7 migrate to preserve the character name selected in the older UI. Items,
+levels, currency and progress remain; incompatible equipped items stay in the
+bag when removed from equipment.
+
+Respawn timers retain recovered source intervals. Bounded populations previously
+sampled slow/rare entries too heavily; starter areas now include ordinary fast
+spawn groups. Timers advance during menus, remember time spent away, and return
+enemies to their recorded home positions. Older slow-only or empty outdoor save
+states receive source-backed common spawns. Rare source timers remain long.
+The offline population cap and simplified combat remain reconstruction choices.

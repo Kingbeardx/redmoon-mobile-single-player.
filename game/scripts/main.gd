@@ -35,6 +35,16 @@ var status: Label
 var stats: Label
 var location_label: Label
 var help_label: Label
+var hp_text: Label
+var mp_text: Label
+var xp_bar: ProgressBar
+var mp_bar: ProgressBar
+var skill_button: Button
+var food_button: Button
+var minimap_visible: bool=false
+var status_age: float=0
+var last_status: String=""
+var paused_at: float=0
 var hp_bar: ProgressBar
 var map_select: OptionButton
 var attack_button: Button
@@ -114,105 +124,70 @@ func _button(text_value: String, fill: Color, border: Color = Color(0.25, 0.32, 
 	return button
 
 func _build_ui() -> void:
-	var layer := CanvasLayer.new()
-	add_child(layer)
-	root_ui = Control.new()
-	root_ui.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT)
-	root_ui.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	layer.add_child(root_ui)
-	var top := Panel.new()
-	top.name = "TopPanel"
-	top.add_theme_stylebox_override("panel", _style(Color(0.035, 0.05, 0.075, 0.96), Color(0.13, 0.19, 0.25), 0))
-	top.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	root_ui.add_child(top)
-	var title := _label("REDMOON", 29)
-	title.name = "Title"
-	var badge := _label("OFFLINE ADVENTURE", 13, Color(0.98, 0.58, 0.38))
-	badge.name = "Badge"
-	var note := _label("", 24, WHITE)
-	note.name = "Note"
-	location_label = _label("", 16, WHITE)
-	map_select = OptionButton.new()
-	map_select.add_theme_font_size_override("font_size", 26)
-	map_select.add_theme_stylebox_override("normal", _style(INK, Color(0.25, 0.32, 0.4)))
-	map_select.focus_mode = Control.FOCUS_NONE
-	map_select.item_selected.connect(_change_map)
-	root_ui.add_child(map_select)
-	var bottom := Panel.new()
-	bottom.name = "BottomPanel"
-	bottom.add_theme_stylebox_override("panel", _style(Color(0.035, 0.05, 0.075, 0.94), Color(0.13, 0.19, 0.25), 0))
-	bottom.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	root_ui.add_child(bottom)
-	stats = _label("", 18)
-	hp_bar = ProgressBar.new()
-	hp_bar.max_value = world.max_hp()
-	hp_bar.show_percentage = false
-	hp_bar.add_theme_stylebox_override("background", _style(Color(0.18, 0.12, 0.17), Color(0.18, 0.12, 0.17), 4))
-	hp_bar.add_theme_stylebox_override("fill", _style(RED, RED, 4))
-	hp_bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	root_ui.add_child(hp_bar)
-	status = _label("Loading recovered data…", 15, MUTED)
-	help_label = _label("MOVE  WASD / arrows      ATTACK  Space      HEAL  E", 13, MUTED)
-	joystick = JoystickScript.new()
-	root_ui.add_child(joystick)
-	attack_button = _button("ATTACK\nSpace", Color(0.49, 0.12, 0.17), RED)
+	var layer:=CanvasLayer.new();add_child(layer)
+	root_ui=Control.new();root_ui.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT);root_ui.mouse_filter=Control.MOUSE_FILTER_IGNORE;layer.add_child(root_ui)
+	var health:=Panel.new();health.name="HealthCard";health.add_theme_stylebox_override("panel",_style(Color(0.025,.035,.05,.88),Color("776550"),14));health.mouse_filter=Control.MOUSE_FILTER_IGNORE;root_ui.add_child(health)
+	health.mouse_filter=Control.MOUSE_FILTER_STOP
+	health.gui_input.connect(func(event: InputEvent):
+		if event is InputEventMouseButton and event.pressed:game_ui.show_stats())
+	var portrait:=TextureRect.new();portrait.name="Portrait";portrait.expand_mode=TextureRect.EXPAND_IGNORE_SIZE;portrait.stretch_mode=TextureRect.STRETCH_KEEP_ASPECT_CENTERED;portrait.mouse_filter=Control.MOUSE_FILTER_IGNORE;root_ui.add_child(portrait)
+	stats=_label("",24);stats.name="HeroName";stats.add_theme_font_size_override("font_size",28)
+	hp_bar=ProgressBar.new();mp_bar=ProgressBar.new()
+	for bar in [hp_bar,mp_bar]:
+		bar.show_percentage=false;bar.mouse_filter=Control.MOUSE_FILTER_IGNORE;bar.add_theme_stylebox_override("background",_style(Color("171921"),Color("342e2d"),8));root_ui.add_child(bar)
+	xp_bar=ProgressBar.new();xp_bar.show_percentage=false;xp_bar.mouse_filter=Control.MOUSE_FILTER_IGNORE;xp_bar.add_theme_stylebox_override("background",_style(Color("171921"),Color("171921"),2));xp_bar.add_theme_stylebox_override("fill",_style(Color("d6b567"),Color("d6b567"),2));root_ui.add_child(xp_bar)
+	for state in ["background","fill"]:
+		var skin=xp_bar.get_theme_stylebox(state).duplicate();skin.content_margin_top=0;skin.content_margin_bottom=0;skin.content_margin_left=0;skin.content_margin_right=0;skin.set_border_width_all(0);xp_bar.add_theme_stylebox_override(state,skin)
+	hp_bar.add_theme_stylebox_override("fill",_style(Color("b92c45"),Color("ee7582"),8));mp_bar.add_theme_stylebox_override("fill",_style(Color("197b9f"),Color("73d4e1"),8))
+	hp_text=_label("",24);mp_text=_label("",24)
+	for label in [hp_text,mp_text]:label.add_theme_font_size_override("font_size",26);label.horizontal_alignment=HORIZONTAL_ALIGNMENT_CENTER
+	location_label=_label("",24);location_label.horizontal_alignment=HORIZONTAL_ALIGNMENT_CENTER
+	help_label=_label("",24);help_label.add_theme_stylebox_override("normal",_style(Color(0.025,.035,.05,.82),Color("776550"),12));help_label.clip_text=true
+	status=_label("",24);status.horizontal_alignment=HORIZONTAL_ALIGNMENT_CENTER;status.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART;status.max_lines_visible=2;status.text_overrun_behavior=TextServer.OVERRUN_TRIM_ELLIPSIS;status.add_theme_stylebox_override("normal",_style(Color(0.025,.035,.05,.9),Color("776550"),12))
+	joystick=JoystickScript.new();root_ui.add_child(joystick)
+	attack_button=_action("ATTACK","attack",Color("dc526b"));heal_button=_action("HEAL","heal",Color("4dc9ac"));skill_button=_action("STRIKE","strike",Color("75b3f4"));food_button=_action("FOOD","food",Color("d8b66d"))
 	attack_button.pressed.connect(func():
-		if not OS.has_feature("mobile"):
-			_attack())
-	heal_button = _button("HEAL\nE", Color(0.06, 0.27, 0.26), TEAL.darkened(0.3))
+		if not OS.has_feature("mobile"):_attack())
 	heal_button.pressed.connect(func():
-		if not OS.has_feature("mobile"):
-			_heal())
-	save_button = _button("SAVE", INK)
-	save_button.add_theme_font_size_override("font_size", 26)
-	save_button.pressed.connect(_save)
-	var reset := _button("RESET", INK)
-	reset.name = "Reset"
-	reset.text="MENU"
-	reset.add_theme_font_size_override("font_size", 26)
-	reset.pressed.connect(func():
-		_save()
-		frontend.has_save=true
-		frontend.show_title())
-	reset_dialog = ConfirmationDialog.new()
-	reset_dialog.title = "Reset offline prototype progress?"
-	reset_dialog.dialog_text = "This clears this device's prototype save and restarts the current map."
-	reset_dialog.confirmed.connect(func(): world.reset_progress(); _update_ui())
-	root_ui.add_child(reset_dialog)
-	var closer:=_button("VIEW +",INK);closer.name="ZoomIn";closer.pressed.connect(func():set_zoom(world_zoom+0.25))
-	var farther:=_button("VIEW −",INK);farther.name="ZoomOut";farther.pressed.connect(func():set_zoom(world_zoom-0.25))
+		if not OS.has_feature("mobile"):_heal())
+	skill_button.pressed.connect(func():
+		if not OS.has_feature("mobile"):_skill())
+	food_button.pressed.connect(func():
+		if not OS.has_feature("mobile"):_food())
+	skill_button.tooltip_text="Power Strike · 20 mana";heal_button.tooltip_text="Healing charge";food_button.tooltip_text="Use food or a drink from your bag"
+	map_select=OptionButton.new();map_select.add_theme_font_size_override("font_size",24);map_select.add_theme_stylebox_override("normal",_style(INK,Color("776550")));map_select.focus_mode=Control.FOCUS_NONE;map_select.item_selected.connect(_change_map);root_ui.add_child(map_select)
+	var menu:=_button("MENU",INK,Color("776550"));menu.name="Menu";menu.pressed.connect(func():_save();frontend.has_save=true;frontend.show_title())
+	save_button=_button("SAVE",INK);save_button.hide();save_button.pressed.connect(_save)
+	reset_dialog=ConfirmationDialog.new();root_ui.add_child(reset_dialog)
+	var closer:=_button("+",INK);closer.name="ZoomIn";closer.pressed.connect(func():set_zoom(world_zoom+.25))
+	var farther:=_button("−",INK);farther.name="ZoomOut";farther.pressed.connect(func():set_zoom(world_zoom-.25))
+
+func _action(title: String,icon: String,color: Color) -> Button:
+	var action=preload("res://scripts/action_button.gd").new();root_ui.add_child(action);action.setup(title,load("res://ui/"+icon+".svg"),color);return action
 
 func _layout() -> void:
-	var viewport: Vector2=get_viewport_rect().size
-	root_ui.size=viewport
-	root_ui.get_node("TopPanel").position=Vector2.ZERO
-	root_ui.get_node("TopPanel").size=Vector2(viewport.x,164)
-	root_ui.get_node("Title").position=Vector2(24,10)
-	root_ui.get_node("Badge").visible=false
-	root_ui.get_node("Note").visible=false
-	location_label.position=Vector2(24,64)
-	location_label.size=Vector2(viewport.x-430,44);location_label.clip_text=true
-	map_select.position=Vector2(viewport.x-420,12);map_select.size=Vector2(396,60)
-	save_button.position=Vector2(viewport.x-420,80);save_button.size=Vector2(188,56)
-	root_ui.get_node("Reset").position=Vector2(viewport.x-216,80);root_ui.get_node("Reset").size=Vector2(192,56)
-	root_ui.get_node("ZoomIn").position=Vector2(24,102);root_ui.get_node("ZoomIn").size=Vector2(166,40)
-	root_ui.get_node("ZoomOut").position=Vector2(202,102);root_ui.get_node("ZoomOut").size=Vector2(166,40)
-	root_ui.get_node("BottomPanel").position=Vector2(0,viewport.y-154)
-	root_ui.get_node("BottomPanel").size=Vector2(viewport.x,154)
-	joystick.position=Vector2(20,viewport.y-220);joystick.size=Vector2(180,180)
-	stats.position=Vector2(218,viewport.y-150);stats.add_theme_font_size_override("font_size",28)
-	hp_bar.position=Vector2(218,viewport.y-72);hp_bar.size=Vector2(420,14)
-	status.position=Vector2(218,viewport.y-48);status.size=Vector2(viewport.x-240,42);status.clip_text=true
-	status.add_theme_color_override("font_color",WHITE)
-	help_label.position=Vector2(218,viewport.y-204);help_label.size=Vector2(viewport.x-574,60)
-	help_label.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART
-	help_label.add_theme_color_override("font_color",WHITE)
-	help_label.add_theme_stylebox_override("normal",_style(Color(0.025,0.035,0.05,0.94),Color(0.22,0.29,0.35)))
-	attack_button.position=Vector2(viewport.x-178,viewport.y-296);attack_button.size=Vector2(154,132)
-	heal_button.position=Vector2(viewport.x-344,viewport.y-276);heal_button.size=Vector2(154,112)
-	if inventory_panel!=null:
-		inventory_panel.position=Vector2(60,150);inventory_panel.size=Vector2(viewport.x-120,viewport.y-170)
-	if game_ui.panel!=null: game_ui.layout()
+	var view: Vector2=get_viewport_rect().size;root_ui.size=view
+	root_ui.get_node("HealthCard").position=Vector2(20,18);root_ui.get_node("HealthCard").size=Vector2(370,126)
+	root_ui.get_node("Portrait").position=Vector2(28,26);root_ui.get_node("Portrait").size=Vector2(66,104)
+	stats.position=Vector2(106,20);stats.size=Vector2(276,35)
+	xp_bar.position=Vector2(106,135);xp_bar.size=Vector2(270,4)
+	hp_bar.position=Vector2(106,58);hp_bar.size=Vector2(270,32);hp_text.position=hp_bar.position;hp_text.size=hp_bar.size
+	mp_bar.position=Vector2(106,100);mp_bar.size=Vector2(270,26);mp_text.position=mp_bar.position;mp_text.size=mp_bar.size
+	location_label.position=Vector2(408,22);location_label.size=Vector2(maxf(180,view.x-884),42);location_label.clip_text=true
+	map_select.position=Vector2(view.x-450,20);map_select.size=Vector2(164,60)
+	root_ui.get_node("Menu").position=Vector2(view.x-150,20);root_ui.get_node("Menu").size=Vector2(130,60)
+	root_ui.get_node("ZoomIn").position=Vector2(view.x-86,100);root_ui.get_node("ZoomIn").size=Vector2(64,60)
+	root_ui.get_node("ZoomOut").position=Vector2(view.x-86,170);root_ui.get_node("ZoomOut").size=Vector2(64,60)
+	joystick.position=Vector2(20,view.y-188);joystick.size=Vector2(164,164)
+	attack_button.position=Vector2(view.x-140,view.y-144);attack_button.size=Vector2(116,116)
+	skill_button.position=Vector2(view.x-254,view.y-128);skill_button.size=Vector2(100,100)
+	heal_button.position=Vector2(view.x-368,view.y-128);heal_button.size=Vector2(100,100)
+	food_button.position=Vector2(view.x-482,view.y-128);food_button.size=Vector2(100,100)
+	help_label.position=Vector2(20,152);help_label.size=Vector2(370,48)
+	status.position=Vector2(view.x*.5-240,view.y-224);status.size=Vector2(480,66)
+	if inventory_panel!=null:inventory_panel.position=Vector2(40,90);inventory_panel.size=Vector2(view.x-80,view.y-114)
+	if root_ui.has_node("BagButton"):root_ui.get_node("BagButton").position=Vector2(view.x-272,20);root_ui.get_node("BagButton").size=Vector2(108,60)
+	if game_ui.panel!=null:game_ui.layout()
 	queue_redraw()
 
 func _process(delta: float) -> void:
@@ -220,7 +195,10 @@ func _process(delta: float) -> void:
 		return
 	if audio_controller.player!=null:audio_controller.set_map(world.map_id)
 	if ui_blocked():
+		world.advance_respawns(delta)
 		return
+	status_age+=delta
+	status.modulate.a=1.0 if status_age<5 else maxf(0,1-(status_age-5))
 	var direction: Vector2 = joystick.direction
 	if not get_viewport().gui_get_focus_owner():
 		direction += Vector2(float(Input.is_physical_key_pressed(KEY_D) or Input.is_physical_key_pressed(KEY_RIGHT)) - float(Input.is_physical_key_pressed(KEY_A) or Input.is_physical_key_pressed(KEY_LEFT)), float(Input.is_physical_key_pressed(KEY_S) or Input.is_physical_key_pressed(KEY_DOWN)) - float(Input.is_physical_key_pressed(KEY_W) or Input.is_physical_key_pressed(KEY_UP)))
@@ -254,6 +232,10 @@ func _input(event: InputEvent) -> void:
 		elif heal_button.get_global_rect().has_point(event.position):
 			_heal()
 			get_viewport().set_input_as_handled()
+		elif skill_button.get_global_rect().has_point(event.position):
+			_skill();get_viewport().set_input_as_handled()
+		elif food_button.get_global_rect().has_point(event.position):
+			_food();get_viewport().set_input_as_handled()
 
 func _unhandled_key_input(event: InputEvent) -> void:
 	if ui_blocked() or not ready_world or not event is InputEventKey or not event.pressed or event.echo:
@@ -262,12 +244,17 @@ func _unhandled_key_input(event: InputEvent) -> void:
 		_attack()
 	elif event.physical_keycode == KEY_E:
 		_heal()
+	elif event.physical_keycode == KEY_Q:_skill()
+	elif event.physical_keycode == KEY_R:_food()
 	elif event.physical_keycode == KEY_F5:
 		_save()
 
 func _notification(what: int) -> void:
 	if what in [NOTIFICATION_APPLICATION_PAUSED,NOTIFICATION_APPLICATION_RESUMED] and is_instance_valid(audio_controller) and is_instance_valid(audio_controller.player):
 		audio_controller.player.stream_paused=what==NOTIFICATION_APPLICATION_PAUSED
+	if what==NOTIFICATION_APPLICATION_PAUSED:paused_at=Time.get_unix_time_from_system()
+	elif what==NOTIFICATION_APPLICATION_RESUMED and paused_at>0:
+		world.advance_respawns(maxf(0,Time.get_unix_time_from_system()-paused_at));paused_at=0
 	if what in [NOTIFICATION_APPLICATION_PAUSED,NOTIFICATION_WM_CLOSE_REQUEST,NOTIFICATION_APPLICATION_FOCUS_OUT] and ready_world and is_instance_valid(frontend.panel) and not frontend.panel.visible:
 		world.save_game()
 
@@ -287,6 +274,7 @@ func _sync_map_selection() -> void:
 	for id in world.travel_options():
 		if id!=world.map_id: map_select.add_item(world.map_name(id),id)
 	map_select.select(0)
+	map_select.text="TRAVEL"
 
 func _attack() -> void:
 	var prior: int = world.defeated
@@ -307,19 +295,39 @@ func _save() -> void:
 	_update_ui()
 
 func _update_ui() -> void:
-	if not ready_world:
-		return
+	if not ready_world:return
 	if audio_controller.player!=null:audio_controller.set_map(world.map_id)
-	if map_select.item_count==0 or map_select.get_item_id(map_select.selected)!=world.map_id:
-		_sync_map_selection()
-	stats.text = "LEVEL %d     HP %d / %d     XP %d / %d\nMANA %d / %d     GOLD %d     POINTS %d" % [world.level, world.hp, world.max_hp(), world.xp, world.level * 40,world.mana,world.max_mana(),world.gold,world.bonus_points]
-	hp_bar.max_value=world.max_hp()
-	hp_bar.value = world.hp
-	location_label.text = "%s · %s · X %d Y %d" % [world.player_name,world.map_name(),int(world.player.x),int(world.player.y)]
-	status.text = world.message
-	help_label.text=world.objective() if world.adventure_started else "MOVE WASD/arrows · ATTACK Space · HEAL E"
-	heal_button.text = "HEAL × %d\nE" % world.potions
-	attack_button.modulate = Color(1, 1, 1, 0.7) if world.attack_cooldown > 0.0 else Color.WHITE
+	if map_select.item_count==0 or map_select.get_item_id(map_select.selected)!=world.map_id:_sync_map_selection()
+	stats.text="%s · Lv %d" % [world.HERO_NAMES[world.character_id],world.level]
+	stats.tooltip_text="XP %d / %d · Gold %d · Stat points %d" % [world.xp,world.level*40,world.gold,world.bonus_points]
+	xp_bar.max_value=world.level*40;xp_bar.value=world.xp
+	hp_bar.max_value=world.max_hp();hp_bar.value=world.hp;mp_bar.max_value=world.max_mana();mp_bar.value=world.mana
+	hp_text.text="HP %d / %d" % [world.hp,world.max_hp()];mp_text.text="MP %d / %d" % [world.mana,world.max_mana()]
+	location_label.text=world.map_name()
+	if status.text!=world.message:status_age=0;status.modulate.a=1
+	status.text=world.message
+	help_label.text=["Meet the Doctor","Visit Street 1","Backyard · %d / 3" % world.tutorial_kills,"Return to Doctor","Explore Redmoon"][world.tutorial_stage] if world.adventure_started else "Explore Redmoon"
+	var cooldown: float=world.attack_cooldown/.45
+	attack_button.set_state("",cooldown)
+	heal_button.disabled=world.potions<=0;heal_button.set_state(str(world.potions),0)
+	skill_button.disabled=world.mana<20;skill_button.set_state("20MP",cooldown)
+	var food: int=0
+	for key in world.inventory:
+		if str(key).begins_with("4:"):food+=int(world.inventory[key])
+	food_button.disabled=food<=0;food_button.set_state(str(food),0)
+	var portrait: TextureRect=root_ui.get_node("Portrait")
+	if int(portrait.get_meta("hero",-1))!=world.character_id:
+		portrait.texture=frontend._hero_texture(world.character_id);attack_button.picture.texture=load("res://ui/strike.svg") if world.character_id in [0,1] else load("res://ui/attack.svg");portrait.set_meta("hero",world.character_id)
+
+func _skill() -> void:
+	if world.cast_skill():play_sound("attack")
+	_update_ui()
+
+func _food() -> void:
+	if world.quick_food():play_sound("heal")
+	_update_ui()
+
+func gameplay_rect() -> Rect2:return get_viewport_rect()
 
 func iso(point: Vector2) -> Vector2:
 	return point * TILE
@@ -345,7 +353,7 @@ func _draw() -> void:
 	for y in range(maxi(0, center.y - span), mini(world.height, center.y + span + 1)):
 		for x in range(maxi(0, center.x - span), mini(world.width, center.x + span + 1)):
 			var point: Vector2 = iso(Vector2(x + 0.5, y + 0.5)) + camera_origin
-			if point.x < -TILE.x or point.x > viewport.x + TILE.x or point.y < 125/world_zoom or point.y > viewport.y - 145/world_zoom:
+			if point.x < -TILE.x or point.x > viewport.x + TILE.x or point.y < -120 or point.y > viewport.y+120:
 				continue
 			if _draw_original_tile(x, y, point):
 				continue
@@ -373,7 +381,7 @@ func _draw() -> void:
 	entities.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return a["position"].y < b["position"].y)
 	for entry in entities:
 		var point: Vector2 = iso(entry["position"]) + camera_origin
-		if point.x < -40 or point.x > viewport.x + 40 or point.y < 100/world_zoom or point.y > viewport.y - 145/world_zoom:
+		if point.x < -40 or point.x > viewport.x + 40 or point.y < -120 or point.y > viewport.y+120:
 			continue
 		if entry.has("exit"):
 			draw_circle(point,8,TEAL)
@@ -431,7 +439,8 @@ func _draw_actor(point: Vector2, is_player: bool, enemy: Dictionary) -> void:
 		draw_string(ThemeDB.fallback_font, point + Vector2(-18, -45), "#%d" % int(enemy.get("monster_id", 0)), HORIZONTAL_ALIGNMENT_LEFT, -1, 11, Color(0.75, 0.62, 0.65))
 
 func _draw_minimap(viewport: Vector2) -> void:
-	var panel := Rect2(Vector2(viewport.x - 184, 158), Vector2(156, 166))
+	if not minimap_visible:return
+	var panel := Rect2(Vector2(viewport.x - 272, 96), Vector2(156, 166))
 	draw_style_box(_style(Color(0.035, 0.05, 0.075, 0.94), Color(0.18, 0.26, 0.33), 10), panel)
 	draw_string(ThemeDB.fallback_font, panel.position + Vector2(13, 22), "MAP", HORIZONTAL_ALIGNMENT_LEFT, -1, 24, MUTED)
 	var scale_factor: float = minf(126.0 / float(world.width), 126.0 / float(world.height))
@@ -472,7 +481,8 @@ func _draw_original_tile(x: int, y: int, point: Vector2) -> bool:
 	return true
 
 func _build_inventory() -> void:
-	var open := _button("BAG", INK)
+	var open := _button("BAG", INK,Color("776550"))
+	open.name="BagButton"
 	open.position = Vector2(400, 12)
 	open.size = Vector2(280, 60)
 	open.pressed.connect(_show_inventory)
@@ -529,18 +539,7 @@ func play_sound(action: String) -> void:
 	audio_players[action].play()
 
 func _market_rows() -> void:
-	game_ui.close();inventory_panel.show()
-	for child in inventory_list.get_children():
-		inventory_list.remove_child(child)
-		child.queue_free()
-	_row("BACK · Gold %d" % world.gold, _show_inventory)
-	var stock: Array=world.zone_stock()
-	if stock.is_empty():
-		_row("No supported market stock in this zone.",func():pass)
-	for item in stock:
-		var purchase_key: String=str(item["purchase_key"])
-		var button: Button = _row("Buy %s · %d gold\n%s" % [item["name"],item["price"],world.item_details(item["key"])],func():world.buy_stock(purchase_key);_market_rows())
-		_set_item_icon(button,item["key"])
+	game_ui.show_shop()
 
 func toggle_music() -> void:
 	audio_controller.toggle()
@@ -599,7 +598,7 @@ func npc_screen_rect(npc: Dictionary) -> Rect2:
 	return Rect2(point+Vector2(-35,-85)*world_zoom,Vector2(70,90)*world_zoom).grow(12)
 
 func npc_at_screen(position: Vector2) -> Dictionary:
-	var area:=Rect2(Vector2(0,164),get_viewport_rect().size-Vector2(0,318))
+	var area:=gameplay_rect()
 	if not area.has_point(position):return {}
 	var result: Dictionary={}
 	var best: float=INF
@@ -614,6 +613,8 @@ func npc_at_screen(position: Vector2) -> Dictionary:
 func _unhandled_input(event: InputEvent) -> void:
 	if not ready_world or ui_blocked():return
 	if (event is InputEventScreenTouch and event.pressed) or (event is InputEventMouseButton and event.pressed and event.button_index==MOUSE_BUTTON_LEFT):
+		for action in [attack_button,heal_button,skill_button,food_button]:
+			if action.get_global_rect().has_point(event.position):return
 		var npc:=npc_at_screen(event.position)
 		if npc.is_empty():return
 		if world.npc_position(npc).distance_to(world.player)<8:game_ui.open_dialogue(npc)

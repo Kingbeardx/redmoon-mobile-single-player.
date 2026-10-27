@@ -103,3 +103,14 @@ the end of its source duration (some have instrument release tails). Five themes
 and 20 map assignments pass the conservative cross-client gates. Blood Sun's
 custom gameplay tables, recordings, and client code are excluded. Build/signing
 and packaged-audio verification are in `analysis/v08-build.json`.
+
+## Version 0.9 mobile and gameplay update
+
+221 Godot checks passed, including 23 new HUD/shop/respawn/profile checks. The
+24 Python importer tests and four recovered-rule tests also passed. The new
+checks exercise a real compatible-shop purchase, class rejection without gold
+loss, normal/paused/away respawns, repair of old saved populations, heroine-ID
+migration, original biography display, touch Strike/food actions, and an actual
+1600x720 expanded canvas. UI screenshots are `v09-hud.png`, `v09-shop.png` and
+`v09-bio.png`. Existing dialogue, inventory, creation, audio mixer and multitouch
+checks remain green. No physical phone test has been performed.

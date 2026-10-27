@@ -52,7 +52,7 @@ func run() -> void:
 		scene.set_zoom(zoom);scene.world.enter_map(9);scene.world.player=scene.world.find_start([9,12]);scene.queue_redraw()
 		await process_frame;await RenderingServer.frame_post_draw
 		var npc: Dictionary=scene.world.nearest_npc()
-		var area:=Rect2(Vector2(0,164),scene.get_viewport_rect().size-Vector2(0,318))
+		var area: Rect2=scene.gameplay_rect()
 		var point: Vector2=scene.npc_screen_rect(npc).intersection(area).get_center()
 		for pressed in [true,false]:
 			var touch:=InputEventScreenTouch.new();touch.index=0;touch.pressed=pressed;touch.position=point;Input.parse_input_event(touch);await process_frame
@@ -76,7 +76,7 @@ func run() -> void:
 	scene.game_ui.talk_nearby();await process_frame
 	check(scene.game_ui.dialogue_primary!=null and scene.game_ui.dialogue_primary.text=="BROWSE SHOP","merchant dialogue offers shop")
 	await click(scene.game_ui.dialogue_primary)
-	check(scene.inventory_panel.visible and not scene.game_ui.panel.visible and scene.world.shop_available,"shop dialogue opens recovered stock")
+	check(scene.game_ui.panel.visible and scene.game_ui.page=="shop" and scene.world.shop_available,"shop dialogue opens recovered stock")
 	scene.world.enter_map(0);check(not scene.world.shop_available,"leaving shop clears sale permission")
 	# Capture the actual bag and stat panels for review.
 	scene.world.travel_to(9);scene.world.inventory["1:1"]=1;scene.world.inventory["2:1"]=1;scene.game_ui.item_filter="All";scene.game_ui.selected_item="1:1";scene.game_ui.show_bag()

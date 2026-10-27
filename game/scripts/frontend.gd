@@ -8,6 +8,9 @@ var hero_buttons: Array[Button]=[]
 var selected_hero: int=0
 var preview: TextureRect
 var hero_heading: Label
+var profiles: Dictionary={}
+var bio_panel: PanelContainer
+var bio_body: VBoxContainer
 var feedback: Label
 var replace_dialog: ConfirmationDialog
 var has_save: bool=false
@@ -17,6 +20,8 @@ var keyboard_feedback: Label
 
 func setup(owner_scene: Node, existing: bool) -> void:
 	scene=owner_scene;has_save=existing
+	var data=scene.world.read_json("res://data/hero-profiles.json")
+	if data is Dictionary:profiles=data.get("profiles",{})
 	panel=PanelContainer.new();panel.z_index=100
 	panel.add_theme_stylebox_override("panel",scene._style(Color("0b0b10"),Color("b69862")))
 	scene.root_ui.add_child(panel);panel.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -25,7 +30,7 @@ func setup(owner_scene: Node, existing: bool) -> void:
 	replace_dialog=ConfirmationDialog.new();replace_dialog.title="Replace saved character?"
 	replace_dialog.dialog_text="This replaces the current adventure on this device."
 	replace_dialog.confirmed.connect(_create);panel.add_child(replace_dialog)
-	_build_keyboard();show_title()
+	_build_keyboard();_build_bio();show_title()
 
 func clear() -> void:
 	hero_buttons.clear()
@@ -42,7 +47,7 @@ func button(text: String, action: Callable, parent: Node=null) -> Button:
 	item.custom_minimum_size.y=60;item.pressed.connect(action);return item
 
 func show_title() -> void:
-	clear();keyboard_panel.hide();panel.show();scene.inventory_panel.hide();scene.game_ui.close()
+	clear();keyboard_panel.hide();bio_panel.hide();panel.show();scene.inventory_panel.hide();scene.game_ui.close()
 	scene.joystick.direction=Vector2.ZERO;scene.joystick.active_touch=-1;scene.joystick.mouse_dragging=false;scene.joystick.set_process_input(false)
 	label("REDMOON",52);label("OFFLINE ADVENTURE",32)
 	label("Create your hero. Explore Street 1 and the world beyond.")
@@ -53,7 +58,7 @@ func show_title() -> void:
 	label("One saved character · progress saves automatically",26)
 
 func close_for_play() -> void:
-	keyboard_panel.hide();panel.hide();scene.joystick.set_process_input(true)
+	keyboard_panel.hide();bio_panel.hide();panel.hide();scene.joystick.set_process_input(true)
 	scene._sync_map_selection();scene._update_ui()
 
 func show_creation() -> void:
@@ -84,6 +89,7 @@ func show_creation() -> void:
 		if (event is InputEventScreenTouch or event is InputEventMouseButton) and event.pressed: open_keyboard.call_deferred())
 	button("EDIT NAME",open_keyboard,name_row)
 	feedback=label("Level 1 · Begin at Street 1 Hospital. The Doctor will guide you.",26)
+	button("STORY, SKILLS & EQUIPMENT",show_bio)
 	var actions:=HBoxContainer.new();actions.add_theme_constant_override("separation",16);column.add_child(actions)
 	button("BACK",show_title,actions).size_flags_horizontal=Control.SIZE_EXPAND_FILL
 	button("BEGIN ADVENTURE",_begin,actions).size_flags_horizontal=Control.SIZE_EXPAND_FILL
@@ -104,6 +110,8 @@ func select_hero(hero: int) -> void:
 	var old: String=scene.world.HERO_NAMES[selected_hero]
 	selected_hero=clampi(hero,0,8);preview.texture=_hero_texture(selected_hero)
 	hero_heading.text=scene.world.HERO_NAMES[selected_hero].to_upper()
+	var info: Dictionary=profiles.get(str(selected_hero),{})
+	feedback.text="Weapons: "+str(info.get("weapon_hint","See item requirements"))+" · Story & equipment below"
 	if name_input.text==old or name_input.text.strip_edges().is_empty(): name_input.text=scene.world.HERO_NAMES[selected_hero]
 	for id in range(hero_buttons.size()):
 		hero_buttons[id].add_theme_stylebox_override("normal",scene._style(Color("543426") if id==selected_hero else Color("1a171b"),Color("ffcf76") if id==selected_hero else Color("746047")))
@@ -165,3 +173,29 @@ func finish_keyboard() -> void:
 	if keyboard_input.text.strip_edges().length()<2:
 		keyboard_feedback.text="Please enter at least 2 characters.";return
 	name_input.text=keyboard_input.text.strip_edges();keyboard_panel.hide()
+
+
+func _build_bio() -> void:
+	bio_panel=PanelContainer.new();bio_panel.z_index=150;bio_panel.add_theme_stylebox_override("panel",scene._style(Color("101722"),Color("a48c69")))
+	scene.root_ui.add_child(bio_panel);bio_panel.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	var center:=CenterContainer.new();bio_panel.add_child(center)
+	bio_body=VBoxContainer.new();bio_body.custom_minimum_size=Vector2(1120,600);bio_body.add_theme_constant_override("separation",14);center.add_child(bio_body);bio_panel.hide()
+
+func show_bio() -> void:
+	for node in bio_body.get_children():bio_body.remove_child(node);node.queue_free()
+	var info: Dictionary=profiles.get(str(selected_hero),{})
+	label(scene.world.HERO_NAMES[selected_hero].to_upper()+" · CHARACTER PROFILE",34,bio_body)
+	var row:=HBoxContainer.new();row.size_flags_vertical=Control.SIZE_EXPAND_FILL;row.add_theme_constant_override("separation",22);bio_body.add_child(row)
+	var image:=TextureRect.new();image.texture=_hero_texture(selected_hero);image.expand_mode=TextureRect.EXPAND_IGNORE_SIZE;image.stretch_mode=TextureRect.STRETCH_KEEP_ASPECT_CENTERED;image.custom_minimum_size=Vector2(220,420);row.add_child(image)
+	var scroll:=ScrollContainer.new();scroll.custom_minimum_size=Vector2(860,420);scroll.size_flags_vertical=Control.SIZE_EXPAND_FILL;row.add_child(scroll)
+	var words:=VBoxContainer.new();words.custom_minimum_size.x=820;words.size_flags_horizontal=Control.SIZE_EXPAND_FILL;words.add_theme_constant_override("separation",14);scroll.add_child(words)
+	var story:=label(str(info.get("story","Biography unavailable.")),26,words);story.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART;story.horizontal_alignment=HORIZONTAL_ALIGNMENT_LEFT
+	var gear:=label("WEAPONS: "+str(info.get("weapon_hint","See item requirements")),28,words);gear.horizontal_alignment=HORIZONTAL_ALIGNMENT_LEFT
+	var examples: Array=info.get("weapon_examples",[])
+	var text: String="Uses psychic or magical abilities, not physical weapons." if examples.is_empty() else "Compatible examples: "+", ".join(PackedStringArray(examples))
+	var detail:=label(text,26,words);detail.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART;detail.horizontal_alignment=HORIZONTAL_ALIGNMENT_LEFT
+	var skills:=label("AVAILABLE ACTIONS
+Attack · Power Strike (20 mana) · Heal · Food
+Power Strike is the current reconstructed mana skill. Original class skill trees are still incomplete.",26,words);skills.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART;skills.horizontal_alignment=HORIZONTAL_ALIGNMENT_LEFT
+	button("BACK TO CHARACTER SELECTION",func():bio_panel.hide(),bio_body)
+	bio_panel.show()

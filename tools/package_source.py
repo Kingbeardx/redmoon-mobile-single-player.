@@ -8,14 +8,13 @@ OUTPUT = ROOT / 'build/redmoon-mobile-source.zip'
 INCLUDE_DIRS = ('tools', 'tests', 'docs', 'data', 'game', 'references')
 EVIDENCE = ('archive-manifest.json', 'pe-report.json', 'coff-symbols.json',
             'svMapServer-selected.asm', 'content-comparison.json', 'nested-map-manifest.json',
-            'v08-audio.png', 'v07-bag.png', 'v07-stats.png', 'v07-dialogue.png',
-            'v08-smoke.log', 'v08-adventure.log', 'v08-input_smoke.log',
-            'v08-upstream_features.log', 'v08-recovery_and_market.log',
-            'v08-recovered_items.log', 'v08-new_adventure.log', 'v08-doctor_dialogue.log',
-            'v08-creation_ui.log', 'v08-end_to_end.log', 'v08-accessibility.log',
-            'v08-inventory_dialogue.log', 'v08-music_playback.log', 'v08-music-integrity.json',
-            'v08-python.log', 'v08-rules.log', 'v08-build.json', 'music-matches.json',
-            'blood-sun-inspection.json', 'v08-preservation-admission.json',
+            'v09-hud.png', 'v09-shop.png', 'v09-bio.png', 'v08-audio.png',
+            'v09-smoke.log', 'v09-adventure.log', 'v09-input_smoke.log',
+            'v09-upstream_features.log', 'v09-recovery_and_market.log',
+            'v09-recovered_items.log', 'v09-new_adventure.log', 'v09-doctor_dialogue.log',
+            'v09-creation_ui.log', 'v09-end_to_end.log', 'v09-accessibility.log',
+            'v09-inventory_dialogue.log', 'v09-music_playback.log', 'v09-v09_features.log',
+            'v09-python.log', 'v09-rules.log', 'v09-build.json',
             'new-character.asm', 'default-position.asm')
 
 

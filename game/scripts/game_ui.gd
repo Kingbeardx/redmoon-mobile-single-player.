@@ -15,6 +15,10 @@ var speaker: Dictionary={}
 var dialogue_text: Label
 var dialogue_primary: Button
 var page: String=""
+var shop_hero_only: bool=true
+var shop_selection: String=""
+var shop_buttons: Dictionary={}
+var shop_buy_button: Button
 const ATTRIBUTES=["strength","spirit","dexterity","power"]
 const DESCRIPTIONS={"strength":"Equipment requirements", "spirit":"Maximum mana and equipment", "dexterity":"Equipment requirements", "power":"Maximum health and equipment"}
 
@@ -108,13 +112,6 @@ func show_item_detail(parent: Node) -> void:
 	var item: Dictionary=scene.world.item_metadata.get(key,{})
 	label(scene.world.item_name(key),parent,32)
 	label("Owned: %d" % int(scene.world.inventory[key]),parent)
-	for field in ["attack","defense","hp","mp","strength","spirit","dexterity","power"]:
-		if int(item.get(field,0))!=0: label("%s  +%d" % [field.to_upper(),int(item[field])],parent)
-	label("Required level: %d" % int(item.get("required_level",0)),parent,24)
-	for field in ATTRIBUTES:
-		if int(item.get("required_"+field,0))>0: label("Requires %d %s" % [int(item["required_"+field]),field.capitalize()],parent,24)
-	var description: String=str(item.get("description",""))
-	if not description.is_empty():label(description.replace("\\\\n","\n").replace("\\n","\n").replace("\t"," "),parent,24)
 	var equipped: bool=scene.world.equipment.values().has(key)
 	var kind: String=key.get_slice(":",0)
 	var action: String="UNEQUIP" if equipped else ("EQUIP" if kind in ["1","2","3"] else "USE ITEM")
@@ -131,12 +128,23 @@ func show_item_detail(parent: Node) -> void:
 	if scene.world.shop_available:
 		button("SELL ONE · %d GOLD" % (int(item.get("price",0))/2),func():scene.world.sell_item(key);show_bag(),parent)
 
+	for field in ["attack","defense","hp","mp","strength","spirit","dexterity","power"]:
+		if int(item.get(field,0))!=0: label("%s  +%d" % [field.to_upper(),int(item[field])],parent)
+	label("Required level: %d" % int(item.get("required_level",0)),parent,24)
+	if key.get_slice(":",0) in ["1","2","3"]:
+		label("For: "+scene.world.allowed_heroes(key),parent,24)
+		label(scene.world.equipment_reason(key),parent,26)
+	for field in ATTRIBUTES:
+		if int(item.get("required_"+field,0))>0: label("Requires %d %s" % [int(item["required_"+field]),field.capitalize()],parent,24)
+	var description: String=str(item.get("description",""))
+	if not description.is_empty():label(description.replace("\\\\n","\n").replace("\\n","\n").replace("\t"," "),parent,24)
+
 func show_stats() -> void:
 	draft={"strength":0,"spirit":0,"dexterity":0,"power":0}
 	render_stats()
 
 func render_stats() -> void:
-	open_page("%s  ·  LEVEL %d" % [scene.world.player_name,scene.world.level],"stats")
+	open_page("%s · %s · LV %d · XP %d/%d" % [scene.world.player_name,scene.world.HERO_NAMES[scene.world.character_id],scene.world.level,scene.world.xp,scene.world.level*40],"stats")
 	stat_plus.clear();stat_minus.clear()
 	var spent: int=draft_total()
 	label("UNSPENT POINTS: %d     ·     PLANNED: %d" % [scene.world.bonus_points-spent,spent],content,30)
@@ -173,6 +181,8 @@ func show_journal() -> void:
 	label(scene.world.objective(),content,30)
 	var scroll:=ScrollContainer.new();scroll.size_flags_vertical=Control.SIZE_EXPAND_FILL;content.add_child(scroll)
 	var list:=VBoxContainer.new();list.size_flags_horizontal=Control.SIZE_EXPAND_FILL;scroll.add_child(list)
+	button("SAVE GAME",func():scene._save();show_journal(),list)
+	button("MINIMAP: "+("ON" if scene.minimap_visible else "OFF"),func():scene.minimap_visible=not scene.minimap_visible;scene.queue_redraw();show_journal(),list)
 	button("TOWN GUIDE / TRAVEL",func():close();scene.inventory_panel.show();scene._travel_rows(),list)
 	button("TALK TO NEARBY NPC",talk_nearby,list)
 	button("POWER STRIKE · 20 MANA",func():close();scene.world.cast_skill(),list)
@@ -245,3 +255,44 @@ func show_audio() -> void:
 	button("NEXT TRACK",func():audio.next_track(1);show_audio(),navigation)
 	button("SOUND EFFECTS: "+("ON" if scene.sounds_enabled else "OFF"),func():scene.sounds_enabled=not scene.sounds_enabled;audio.save_settings();show_audio(),content)
 	if audio.enabled and not audio.player.playing:label(audio.status,content,24)
+
+
+func show_shop() -> void:
+	open_page("MARKET · %s · %d GOLD" % [scene.world.HERO_NAMES[scene.world.character_id],scene.world.gold],"shop")
+	shop_buttons.clear();shop_buy_button=null
+	var filters:=HBoxContainer.new();content.add_child(filters)
+	button("FOR MY HERO",func():shop_hero_only=true;show_shop(),filters).disabled=shop_hero_only
+	button("ALL STOCK",func():shop_hero_only=false;show_shop(),filters).disabled=not shop_hero_only
+	var hint: String="Uses magic or psychic abilities; physical weapons cannot be equipped." if scene.world.character_id in [0,1] else "Check class, level and attribute requirements before buying."
+	label(hint,content,24)
+	var body:=HBoxContainer.new();body.size_flags_vertical=Control.SIZE_EXPAND_FILL;body.add_theme_constant_override("separation",18);content.add_child(body)
+	var scroll:=ScrollContainer.new();scroll.custom_minimum_size.x=680;scroll.size_flags_vertical=Control.SIZE_EXPAND_FILL;body.add_child(scroll)
+	var list:=VBoxContainer.new();list.custom_minimum_size.x=648;scroll.add_child(list)
+	var selected: Dictionary={}
+	for item in scene.world.zone_stock():
+		var reason: String=scene.world.equipment_reason(item["key"])
+		if shop_hero_only and reason.begins_with("Not for"):continue
+		var purchase: String=item["purchase_key"]
+		if shop_selection.is_empty():shop_selection=purchase
+		var entry:=button("%s · %d gold
+%s" % [item["name"],item["price"],reason],func():shop_selection=purchase;show_shop(),list)
+		entry.custom_minimum_size.y=88;entry.add_theme_font_size_override("font_size",25);scene._set_item_icon(entry,item["key"]);shop_buttons[purchase]=entry
+		if shop_selection==purchase:selected=item
+	if selected.is_empty() and not shop_buttons.is_empty():
+		shop_selection=str(shop_buttons.keys()[0]);show_shop();return
+	var details_scroll:=ScrollContainer.new();details_scroll.size_flags_horizontal=Control.SIZE_EXPAND_FILL;details_scroll.horizontal_scroll_mode=ScrollContainer.SCROLL_MODE_DISABLED;body.add_child(details_scroll)
+	var details:=VBoxContainer.new();details.custom_minimum_size.x=384;details.add_theme_constant_override("separation",12);details_scroll.add_child(details)
+	if selected.is_empty():
+		label("NO COMPATIBLE STOCK",details,30)
+		label("Philar and Azlar use psychic or magical abilities and cannot equip physical weapons. Try clothing, accessories and your Strike skill." if scene.world.character_id in [0,1] else "This shop has no compatible items. Choose ALL STOCK to inspect its other equipment.",details,26)
+	else:
+		var key: String=selected["key"];var reason: String=scene.world.equipment_reason(key)
+		label(scene.world.item_name(key),details,32)
+		label(reason,details,28).add_theme_color_override("font_color",Color("80d5ad") if reason in ["Equip now","Usable item"] else Color("edb77c"))
+		var price: int=selected["price"];var purchase: String=selected["purchase_key"]
+		shop_buy_button=button(("BUY FOR LATER · %d GOLD" if reason.begins_with("Requires") else "BUY · %d GOLD") % price,func():scene.world.buy_stock(purchase);selected_item=key;show_shop(),details)
+		shop_buy_button.disabled=reason.begins_with("Not for") or scene.world.gold<price
+		if key.get_slice(":",0) in ["1","2","3"]:label("For: "+scene.world.allowed_heroes(key),details,24)
+		label(scene.world.item_details(key),details,24)
+		if scene.world.gold<price:label("You need %d more gold." % (price-scene.world.gold),details,24)
+	label(scene.world.message,content,24).max_lines_visible=2

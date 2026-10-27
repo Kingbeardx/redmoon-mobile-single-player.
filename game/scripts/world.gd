@@ -32,7 +32,7 @@ var exits: Dictionary = {}
 var exit_marker_cache: Dictionary = {}
 var shop_available: bool = false
 var purchases: Dictionary = {}
-const HERO_NAMES: Array = ["Philar","Azlar","Sadad","Destino","Jarexx","Canon","Lunarena","Kitara","Lavita"]
+const HERO_NAMES: Array = ["Philar","Azlar","Sadad","Destino","Jarexx","Canon","Kitara","Lunarena","Lavita"]
 var item_metadata: Dictionary = {}
 var equipment: Dictionary = {}
 var stats: Dictionary = {"strength":90,"spirit":90,"dexterity":90,"power":90}
@@ -201,8 +201,12 @@ func spawn_enemies() -> void:
 	for record in records:
 		if int(record.get("map_id", -1)) == map_id and int(record.get("quantity", 0)) > 0:
 			candidates.append(record)
-	if adventure_started:
-		candidates.sort_custom(func(a: Dictionary,b: Dictionary) -> bool: return spawn_distance(a)<spawn_distance(b))
+	if adventure_started or map_id in [0,1,21,29]:
+		candidates.sort_custom(func(a: Dictionary,b: Dictionary) -> bool:
+			var ad: float=spawn_distance(a);var bd: float=spawn_distance(b)
+			if ad<900 and bd<900:
+				return float(a.get("respawn_seconds",60))<float(b.get("respawn_seconds",60))
+			return ad<bd)
 	# A bounded sample, not original MMO population. Every point stays inside its
 	# recovered spawn rectangle, with passability checks against the decoded map.
 	for i in range(MAX_ENEMIES):
@@ -227,13 +231,14 @@ func spawn_enemies() -> void:
 				break
 		if not found:
 			continue
-		enemies.append({"monster_id": int(source.get("monster_id", 0)), "name": str(source.get("name", "")), "x": pos.x, "y": pos.y, "hp": 36, "max_hp": 36, "cooldown": random.randf_range(0.1, 1.5), "alive": true, "respawn_seconds": source.get("respawn_seconds",60), "respawn_timer": 0.0, "source": source.get("source", {})})
+		enemies.append({"monster_id": int(source.get("monster_id", 0)), "name": str(source.get("name", "")), "x": pos.x, "y": pos.y, "hp": 36, "max_hp": 36, "cooldown": random.randf_range(0.1, 1.5), "alive": true, "respawn_seconds": source.get("respawn_seconds",60), "respawn_timer": 0.0, "source": source.get("source", {}),"home_x":pos.x,"home_y":pos.y})
 
 func tick(delta: float, direction: Vector2) -> void:
 	if map_id < 0:
 		return
 	var dt: float = clampf(delta, 0.0, 0.1)
 	elapsed += dt
+	advance_respawns(maxf(0,delta))
 	arrival_grace=maxf(0,arrival_grace-dt)
 	motion = direction
 	if direction.length_squared() > 0.001:
@@ -244,10 +249,6 @@ func tick(delta: float, direction: Vector2) -> void:
 		player = move_entity(player, direction.limit_length(1.0) * MOVE_SPEED * (1.6 if running else 1.0) * dt)
 	for enemy in enemies:
 		if not bool(enemy.get("alive", false)):
-			enemy["respawn_timer"] = maxf(0, float(enemy.get("respawn_timer",60)) - dt)
-			if float(enemy["respawn_timer"]) <= 0:
-				enemy["alive"] = true
-				enemy["hp"] = 36
 			continue
 		var position := Vector2(float(enemy["x"]), float(enemy["y"]))
 		enemy["moving"] = false
@@ -359,7 +360,7 @@ func heal() -> bool:
 
 func remember_map() -> void:
 	if map_id >= 0:
-		map_states[str(map_id)] = {"player": [player.x, player.y], "enemies": enemies.duplicate(true)}
+		map_states[str(map_id)] = {"player": [player.x, player.y], "enemies": enemies.duplicate(true),"respawn_saved_at":Time.get_unix_time_from_system(),"spawn_selection_version":2}
 
 func restore_map_state(state: Dictionary) -> void:
 	var position: Variant = state.get("player", [])
@@ -368,6 +369,7 @@ func restore_map_state(state: Dictionary) -> void:
 		if proposed.is_finite() and can_stand(proposed):
 			player = proposed
 	var previous: Variant = state.get("enemies", [])
+	var away: float=maxf(0,Time.get_unix_time_from_system()-float(state.get("respawn_saved_at",Time.get_unix_time_from_system())))
 	if previous is Array:
 		for candidate in previous.slice(0, MAX_ENEMIES):
 			if not candidate is Dictionary:
@@ -375,11 +377,14 @@ func restore_map_state(state: Dictionary) -> void:
 			var proposed := Vector2(float(candidate.get("x", -1)), float(candidate.get("y", -1)))
 			if not proposed.is_finite() or not can_stand(proposed):
 				continue
-			enemies.append({"monster_id": int(candidate.get("monster_id", 0)), "name": str(candidate.get("name", "")), "x": proposed.x, "y": proposed.y, "hp": clampi(int(candidate.get("hp", 36)), 0, 36), "max_hp": 36, "cooldown": 1.0, "alive": bool(candidate.get("alive", true)), "respawn_seconds": maxf(1,float(candidate.get("respawn_seconds",60))), "respawn_timer": maxf(0,float(candidate.get("respawn_timer",60))), "source": candidate.get("source", {})})
+			enemies.append({"monster_id": int(candidate.get("monster_id", 0)), "name": str(candidate.get("name", "")), "x": proposed.x, "y": proposed.y, "hp": clampi(int(candidate.get("hp", 36)), 0, 36), "max_hp": 36, "cooldown": 1.0, "alive": bool(candidate.get("alive", true)), "respawn_seconds": maxf(1,float(candidate.get("respawn_seconds",60))), "respawn_timer": maxf(0,float(candidate.get("respawn_timer",60))-away), "source": candidate.get("source", {}),"home_x":float(candidate.get("home_x",proposed.x)),"home_y":float(candidate.get("home_y",proposed.y))})
+
+	advance_respawns(0)
+	ensure_respawn_mix()
 
 func save_game(path: String = "user://progress.json") -> Error:
 	remember_map()
-	var record: Dictionary = {"player_name":player_name,"adventure_started":adventure_started,"tutorial_stage":tutorial_stage,"tutorial_kills":tutorial_kills,"visited":visited,"bank_gold":bank_gold,"version": SAVE_VERSION, "map_id": map_id, "hp": hp, "xp": xp, "level": level, "potions": potions, "defeated": defeated, "map_states": map_states, "stats":stats,"bonus_points":bonus_points,"equipment":equipment,"purchases":purchases,"facing":facing,"armor_bonus":armor_bonus,"gold":gold,"inventory":inventory,"weapon_bonus":weapon_bonus,"character_id":character_id,"mana":mana,"bounty_claimed":bounty_claimed}
+	var record: Dictionary = {"roster_version":2,"player_name":player_name,"adventure_started":adventure_started,"tutorial_stage":tutorial_stage,"tutorial_kills":tutorial_kills,"visited":visited,"bank_gold":bank_gold,"version": SAVE_VERSION, "map_id": map_id, "hp": hp, "xp": xp, "level": level, "potions": potions, "defeated": defeated, "map_states": map_states, "stats":stats,"bonus_points":bonus_points,"equipment":equipment,"purchases":purchases,"facing":facing,"armor_bonus":armor_bonus,"gold":gold,"inventory":inventory,"weapon_bonus":weapon_bonus,"character_id":character_id,"mana":mana,"bounty_claimed":bounty_claimed}
 	var temporary: String = path + ".tmp"
 	var file := FileAccess.open(temporary, FileAccess.WRITE)
 	if file == null:
@@ -424,6 +429,9 @@ func load_game(path: String = "user://progress.json") -> bool:
 	gold = clampi(int(saved.get("gold",0)),0,99999999)
 	weapon_bonus = clampi(int(saved.get("weapon_bonus",0)),0,50)
 	character_id = clampi(int(saved.get("character_id",1)),0,8)
+	if int(saved.get("roster_version",1))<2:
+		if character_id==6:character_id=7
+		elif character_id==7:character_id=6
 	mana = clampi(int(saved.get("mana",50)),0,max_mana())
 	bounty_claimed = bool(saved.get("bounty_claimed",false))
 	if saved.get("inventory",{}) is Dictionary:
@@ -449,7 +457,7 @@ func valid_save(saved: Variant) -> bool:
 	for key in ["map_id", "hp", "xp", "level", "potions", "defeated"]:
 		if not valid_number(saved.get(key)):
 			return false
-	for key in ["tutorial_stage","tutorial_kills","bank_gold","gold","armor_bonus","weapon_bonus","character_id","mana","facing","bonus_points"]:
+	for key in ["roster_version","tutorial_stage","tutorial_kills","bank_gold","gold","armor_bonus","weapon_bonus","character_id","mana","facing","bonus_points"]:
 		if saved.has(key) and not valid_number(saved[key]):
 			return false
 	for key in ["inventory","purchases"]:
@@ -604,6 +612,8 @@ func item_details(key: String) -> String:
 	return "ATK %d  DEF %d  HP +%d  MP +%d  Lv %d  Price %d" % [item.get("attack",0),item.get("defense",0),item.get("hp",0),item.get("mp",0),item.get("required_level",0),item.get("price",0)]
 
 func cast_skill() -> bool:
+	if attack_cooldown>0:
+		message="Wait for the skill to recover.";return false
 	if mana < 20:
 		message = "Not enough mana. Rest by using a heal."
 		return false
@@ -734,6 +744,8 @@ func buy_stock(purchase_key: String) -> bool:
 	for item in zone_stock():
 		if item["purchase_key"]!=purchase_key:
 			continue
+		if str(item["key"]).get_slice(":",0) in ["1","2","3"] and equipment_reason(item["key"]).begins_with("Not for"):
+			message=equipment_reason(item["key"])+". Choose compatible equipment.";return false
 		if gold<int(item["price"]):
 			message = "Not enough gold."
 			return false
@@ -916,3 +928,54 @@ func spawn_distance(record: Dictionary) -> float:
 	var bounds: Dictionary=record.get("bounds",{})
 	var closest:=Vector2(clampf(player.x,float(bounds.get("left",0)),float(bounds.get("right",width-1))),clampf(player.y,float(bounds.get("top",0)),float(bounds.get("bottom",height-1))))
 	return closest.distance_squared_to(player)
+
+
+func advance_respawns(seconds: float) -> void:
+	for enemy in enemies:
+		if bool(enemy.get("alive",false)):continue
+		enemy["respawn_timer"]=maxf(0,float(enemy.get("respawn_timer",60))-maxf(0,seconds))
+		if float(enemy["respawn_timer"])>0:continue
+		var home:=Vector2(float(enemy.get("home_x",enemy["x"])),float(enemy.get("home_y",enemy["y"])))
+		if not home.is_finite() or not can_stand(home):home=find_start([int(home.x),int(home.y)])
+		enemy["x"]=home.x;enemy["y"]=home.y;enemy["hp"]=int(enemy.get("max_hp",36));enemy["alive"]=true;enemy["cooldown"]=1.4
+
+func equipment_reason(key: String,hero: int=-1) -> String:
+	var item: Dictionary=item_metadata.get(key,{})
+	if item.is_empty():return "Item details unavailable"
+	if key.get_slice(":",0) not in ["1","2","3"]:return "Usable item" if key.begins_with("4:") else "Reference item"
+	var who: int=character_id if hero<0 else hero
+	var mask: int=int(item.get("characters",0))
+	if mask!=0 and (mask&(1<<who))==0:return "Not for "+HERO_NAMES[who]
+	if level<int(item.get("required_level",0)):return "Requires level %d" % int(item["required_level"])
+	for field in ["strength","spirit","dexterity","power"]:
+		if effective_stat(field)<int(item.get("required_"+field,0)):return "Requires %d %s" % [int(item["required_"+field]),field.capitalize()]
+	return "Equip now"
+
+func allowed_heroes(key: String) -> String:
+	var mask: int=int(item_metadata.get(key,{}).get("characters",0));var names: PackedStringArray=[]
+	if mask==0 or (mask&511)==511:return "All heroes"
+	for who in range(HERO_NAMES.size()):
+		if mask==0 or (mask&(1<<who))!=0:names.append(HERO_NAMES[who])
+	return ", ".join(names)
+
+func quick_food() -> bool:
+	for key in inventory:
+		if not str(key).begins_with("4:") or int(inventory[key])<=0:continue
+		var item: Dictionary=item_metadata.get(key,{})
+		if (hp<max_hp() and int(item.get("hp",0))>0) or (mana<max_mana() and int(item.get("mp",0))>0):use_item(key);return true
+	message="No suitable food or drink available. Check your bag.";return false
+
+
+func ensure_respawn_mix() -> void:
+	if enemies.is_empty():
+		spawn_enemies();return
+	for enemy in enemies:
+		if float(enemy.get("respawn_seconds",60))<=60:return
+	var possible: bool=false
+	for row in content.get("spawns",[]):
+		if int(row.get("map_id",-1))==map_id and int(row.get("quantity",0))>0 and float(row.get("respawn_seconds",99999))<=60 and spawn_distance(row)<900:possible=true;break
+	if not possible:return
+	var previous: Array=enemies;enemies=[];spawn_enemies();var fast: Array=[]
+	for enemy in enemies:
+		if float(enemy.get("respawn_seconds",60))<=60:fast.append(enemy)
+	enemies=previous.slice(0,MAX_ENEMIES-mini(4,fast.size()))+fast.slice(0,4)
