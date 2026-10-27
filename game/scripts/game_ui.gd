@@ -23,6 +23,7 @@ var selected_skill: int=0
 var skill_buttons: Dictionary={}
 var skill_assign_buttons: Array=[]
 var skill_cast_button: Button
+var effect_text: Label
 const ATTRIBUTES=["strength","spirit","dexterity","power"]
 const DESCRIPTIONS={"strength":"Equipment requirements", "spirit":"Maximum mana and equipment", "dexterity":"Equipment requirements", "power":"Maximum health and equipment"}
 
@@ -314,6 +315,7 @@ func skill_texture(id: int) -> Texture2D:
 func show_skills() -> void:
 	var system=scene.world.skills;system.ensure_slots()
 	open_page("%s · SKILLS · LEVEL %d" % [scene.world.HERO_NAMES[scene.world.character_id].to_upper(),scene.world.level],"skills")
+	button("ACTIVE EFFECTS & PROTECTION",show_effects,content)
 	skill_buttons.clear();skill_assign_buttons.clear()
 	var row: Dictionary=system.entry(selected_skill)
 	if row.is_empty() or (selected_skill!=-1 and int(row.get("hero",-1))!=scene.world.character_id):
@@ -360,3 +362,19 @@ Current cap: ±100. Higher caps need quests not yet restored." % [honor,scene.wo
 	for slot in range(3):
 		var equipped: Dictionary=system.entry(int(system.slots[slot]))
 		button("%d · %s  × CLEAR" % [slot+1,equipped.get("name","Empty")],func():system.assign(slot,0);scene._save();show_skills(),details)
+
+func show_effects() -> void:
+	open_page("ACTIVE EFFECTS","effects")
+	var scroll:=ScrollContainer.new();scroll.size_flags_vertical=Control.SIZE_EXPAND_FILL;content.add_child(scroll)
+	var body:=VBoxContainer.new();body.size_flags_horizontal=Control.SIZE_EXPAND_FILL;body.add_theme_constant_override("separation",20);scroll.add_child(body)
+	effect_text=label("",body,30);refresh_effects()
+	label("Root stops movement. Freeze and sleep stop movement, attacks and most skills. Cleansing abilities and consumables remain usable. Damage wakes you from sleep. Blindness blocks basic attacks; slowing reduces movement speed.",body,26)
+	label("Cleansing skills remove harmful effects. Mental protection prevents new ones while it lasts. Control effects last up to 3 seconds, followed by a brief resistance window in this offline adventure.",body,26)
+	button("BACK TO SKILLS",show_skills,body)
+
+func refresh_effects() -> void:
+	if page!="effects" or not is_instance_valid(effect_text):return
+	var lines: PackedStringArray=[]
+	for name in scene.world.skills.ailments:lines.append("%s · %ds" % [str(name).to_upper(),int(ceil(scene.world.skills.ailments[name]))])
+	for buff in scene.world.skills.buffs.values():lines.append("%s · %ds%s" % [buff["name"],int(ceil(buff["remaining"]))," · %d protected hits" % int(buff["charges"]) if buff.has("charges") else ""])
+	effect_text.text="No active effects." if lines.is_empty() else "\n\n".join(lines)

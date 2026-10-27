@@ -7,6 +7,9 @@ items=json.loads(Path('game/data/item-metadata.json').read_text())['items'];prof
 for ident in range(9):
  name=text[f'0:5:{ident}'];bio=next(v for v in text.values() if v.lstrip().startswith('- '+name+'\\n')).replace('\\n','\n')
  story,_,ratings=bio.partition('Strength');weapon=re.search(r'Weapon\s+(.+)',ratings)
- weapons=[v['name'] for k,v in items.items() if k.startswith('1:') and int(v.get('characters',0))&(1<<ident)]
+ eligible=[v for k,v in items.items() if k.startswith('1:') and int(v.get('characters',0))&(1<<(7 if ident==6 else 6 if ident==7 else ident))]
+ families={}
+ for item in eligible:families.setdefault(int(item['characters']),[]).append(item['name'])
+ weapons=[names[0] for names in families.values()]+[name for names in families.values() for name in names[1:]]
  profiles[str(ident)]={'name':name,'story':story.strip().split('\n',1)[1].strip(),'weapon_hint':weapon.group(1).strip() if weapon else 'See item requirements','weapon_examples':weapons[:6],'has_physical_weapons':bool(weapons),'source':'Message.ctf: 0:5:'+str(ident)}
 Path('game/data/hero-profiles.json').write_text(json.dumps({'schema_version':1,'profiles':profiles},ensure_ascii=False,indent=2)+'\n');print('Recovered profiles',len(profiles))

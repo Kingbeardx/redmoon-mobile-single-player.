@@ -7,9 +7,9 @@ No rm-lib implementation is copied; its documented layout is a format reference.
 
 The original server contains 114 named player entries (105 normal, nine DP),
 including distinct honor variants of several attacks. All 114 have localized
-names, descriptions, icons and requirements. 61 entries have supported offline
-behavior; 53 remain references and cannot be cast or assigned. This is not a
-claim of 61 unique skills, complete class trees or original combat fidelity.
+names, descriptions, icons and requirements. 70 entries have supported offline
+behavior; 44 remain references and cannot be cast or assigned. This is not a
+claim of 70 unique skills, complete class trees or original combat fidelity.
 
 36 matching RMA records differ from the server in one or more numeric fields.
 In particular, original Philar Heal unlocks at level 10 and Soul Sphere at 50;

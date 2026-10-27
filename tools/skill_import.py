@@ -16,7 +16,12 @@ BUFFS = {3:'disguise',4:'attack_up',5:'attack_up',6:'haste',9:'mana_shield',11:'
 DEBUFFS = {7:'weaken',15:'root',16:'root',38:'slow'}
 EXTRA_MODES = {9:'sleep',303:'sleep',86:'sleep',19:'freeze',84:'blind',
                66:'damage_blind',89:'damage_freeze',27:'leech',76:'leech',
-               57:'disguise',87:'disguise',35:'fear_aura'}
+               57:'disguise',87:'disguise',35:'fear_aura',
+               5:'cleanse',73:'cleanse',16:'purify_guard',22:'purify_guard',
+               55:'status_guard',85:'status_guard',311:'status_guard',40:'decoy',43:'taunt'}
+MONSTER_MODES={0:'damage',1:'heal',2:'root',17:'blind',18:'physical_damage',
+               19:'damage',22:'sleep',26:'freeze',38:'slow',70:'damage',
+               71:'damage',72:'damage',73:'damage'}
 
 def fields(raw):
     if len(raw) != 38:
@@ -41,11 +46,17 @@ def build(server, client):
         if not row['name']: continue
         v = fields(bytes.fromhex(row['suffix_hex']))
         localized.setdefault((v['server_hero'],v['icon']),[]).append((row,v))
-    result=[]; issues=[]
+    result=[]; issues=[];monsters=[]
     for row in table['records']:
         if not row['name']: continue
         v=fields(bytes.fromhex(row['suffix_hex']))
-        if row['prefix_u8']==2 or v['server_hero']>8: continue
+        if row['prefix_u8']==2:
+            # Composite summoning, theft and scripted attacks stay unsupported.
+            mode=MONSTER_MODES.get(v['effect'],'pending') if row['slot'] not in [201,203,204,206] else 'pending'
+            monsters.append({'id':row['slot'],**v,'name':row['name'],'mode':mode,
+                             'range':v['range_encoded']%10000,'area':v['range_encoded']>=10000})
+            continue
+        if v['server_hero']>8:continue
         matches=localized.get((v['server_hero'],v['icon']),[])
         matches.sort(key=lambda pair:(pair[1]['effect']!=v['effect'],pair[1]['level']!=v['level']))
         if not matches: raise FormatError(f'No localized match for skill {row["slot"]}')
@@ -74,6 +85,8 @@ def build(server, client):
                        'kind':row['prefix_u8'],**v,'range':v['range_encoded']%10000,
                        'area':v['range_encoded']>=10000,'mode':mode,'weapon':weapon,
                        'leech_percent':30 if ident==27 else 50 if ident==76 else 0,
+                       'duration_scale':.2 if ident in [22,55,85,40] else 1.0,
+                       'duration_spirit_divisor':10 if ident in [55,85] else 20,
                        'message_key':key,'client_differences':differing,
                        'status':'reconstructed' if mode!='pending' else 'reference_only'})
         if mode=='pending': issues.append(ident)
@@ -81,7 +94,8 @@ def build(server, client):
             'client_sha256':hashlib.sha256((client/'DATAs/Info/skill00.rmi').read_bytes()).hexdigest(),
             'requirements':'Original 3.8 server; English text and displayed hero IDs from Message.ctf',
             'runtime_limit':'Damage, cooldown, targeting and status integration use the offline combat model. Honor cap quests, DP, multiplayer and advanced effects remain incomplete.',
-            'skills':result,'summary':{'player_skills':len(result),'reconstructed':len(result)-len(issues),'reference_only':len(issues)}}
+            'skills':result,'monster_skills':monsters,
+            'summary':{'player_skills':len(result),'reconstructed':len(result)-len(issues),'reference_only':len(issues)}}
 
 def icons(client,game,catalog):
     # Interface RLE entries contain normal/pressed/disabled 50x35 states stacked.
@@ -107,7 +121,7 @@ def projectiles(client,game,catalog):
     from client_assets import Converter
     path=game/'data/client-art.json';art=json.loads(path.read_text())
     c=Converter(client,game/'art');c.meta=art['images'];mapping={};issues=[]
-    for row in catalog['skills']:
+    for row in catalog['skills']+catalog.get('monster_skills',[]):
         if row['mode']=='pending' or not row['projectile']:continue
         try:
             _,sequences=c.rmd('Bul',row['projectile']);directions={}

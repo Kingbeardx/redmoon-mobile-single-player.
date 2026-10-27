@@ -27,6 +27,7 @@ var bounty_claimed: bool = false
 var honor: int = 0
 var monster_metadata: Dictionary={}
 var skills=preload("res://scripts/skill_system.gd").new()
+var monster_skills=preload("res://scripts/monster_skills.gd").new()
 var motion: Vector2 = Vector2.ZERO
 var facing: int = 6
 var running: bool = false
@@ -76,7 +77,8 @@ func read_json(path: String) -> Variant:
 
 func initialize(root: String = "res://data") -> bool:
 	data_root = root
-	skills.setup(self,read_json(data_root+"/skills.json"))
+	var skill_data=read_json(data_root+"/skills.json")
+	skills.setup(self,skill_data);monster_skills.setup(self,skill_data)
 	var journey_data = read_json(data_root+"/journey.json")
 	if journey_data is Dictionary:
 		journey = journey_data
@@ -253,6 +255,8 @@ func tick(delta: float, direction: Vector2) -> void:
 	advance_respawns(maxf(0,delta))
 	skills.tick(maxf(0,delta))
 	arrival_grace=maxf(0,arrival_grace-dt)
+	if not skills.can_move():direction=Vector2.ZERO
+	if skills.ailments.has("slow"):direction*=.5
 	motion = direction
 	if direction.length_squared() > 0.001:
 		facing = facing_for(direction)
@@ -273,7 +277,9 @@ func tick(delta: float, direction: Vector2) -> void:
 			var fleeing: Vector2=move_entity(position,player.direction_to(position)*1.1*dt)
 			enemy["x"]=fleeing.x;enemy["y"]=fleeing.y;enemy["moving"]=true;continue
 		if float(enemy.get("stun_time",0))>0:continue
-		if distance < 8.0 and distance > 1.35:
+		if monster_skills.tick_enemy(enemy,dt):continue
+		var aggro_range: float=15 if not skills.active("taunt").is_empty() else 8
+		if distance < aggro_range and distance > monster_skills.engagement_distance(int(enemy.get("monster_id",0))):
 			if float(enemy.get("root_time",0))>0:continue
 			var toward: Vector2 = position.direction_to(player)
 			var moved: Vector2 = move_entity(position,toward * 1.1 * (.5 if float(enemy.get("slow_time",0))>0 else 1.0) * dt)
@@ -294,11 +300,12 @@ func tick(delta: float, direction: Vector2) -> void:
 			enemy["x"] = position.x
 			enemy["y"] = position.y
 		elif distance <= 1.6 and float(enemy["cooldown"]) <= 0.0 and clear_sight(position,player) and arrival_grace<=0:
-			if float(enemy.get("blind_time",0))<=0:receive_damage(maxi(1,4-armor_bonus))
+			if float(enemy.get("blind_time",0))<=0:receive_damage(4,enemy,false)
 			enemy["cooldown"] = 1.4
 	if hp <= 0 and adventure_started:
 		enter_map(9)
 		player=find_start([9,12])
+		skills.ailments.clear();skills.buffs.clear()
 		hp=max_hp()
 		mana=max_mana()
 		message="You recovered at Street 1 Hospital. Your belongings are safe."
@@ -322,6 +329,8 @@ func move_entity(origin: Vector2, movement: Vector2) -> Vector2:
 	return result
 
 func attack() -> bool:
+	if not skills.can_act():message="You cannot attack while frozen or asleep.";return false
+	if skills.ailments.has("blind"):message="Your vision is obscured. Wait or use a cleansing skill.";return false
 	if attack_cooldown > 0.0 or map_id < 0:
 		return false
 	attack_cooldown = 0.45 / skills.factor("reload")
@@ -378,10 +387,14 @@ func damage_enemy(target: Dictionary,amount: int) -> void:
 	else:
 		message = "Hit creature %d" % int(target["monster_id"])
 
-func receive_damage(amount: int) -> void:
+func receive_damage(amount: int,_attacker: Dictionary={},psychic: bool=false) -> void:
+	if amount<=0 or skills.absorb_decoy():return
+	if not psychic:amount=maxi(1,amount-armor_bonus)
 	amount=maxi(1,int(ceil(amount*skills.factor("barrier"))))
 	if not skills.active("mana_shield").is_empty():
 		var absorbed: int=mini(mana,amount);mana-=absorbed;amount-=absorbed
+	if amount>0 and skills.ailments.has("sleep"):
+		skills.ailments.erase("sleep");skills.control_grace=2.0
 	hp=maxi(0,hp-amount)
 
 func heal() -> bool:
@@ -609,7 +622,7 @@ func use_item(key: String) -> void:
 			message="Requires level %d." % int(item["required_level"])
 			return
 		var mask: int=int(item.get("characters",0))
-		if mask!=0 and (mask & (1<<character_id))==0:
+		if mask!=0 and (mask & (1<<server_hero()))==0:
 			message="This item cannot be equipped by "+HERO_NAMES[character_id]+"."
 			return
 		for stat in ["strength","spirit","dexterity","power"]:
@@ -630,7 +643,7 @@ func refresh_equipment() -> void:
 		var key: String=equipment[slot]
 		var item: Dictionary=item_metadata.get(key,{})
 		var mask: int=int(item.get("characters",0))
-		if item.is_empty() or int(inventory.get(key,0))<=0 or (mask!=0 and (mask & (1<<character_id))==0):
+		if item.is_empty() or int(inventory.get(key,0))<=0 or (mask!=0 and (mask & (1<<server_hero()))==0):
 			equipment.erase(slot)
 			continue
 		weapon_bonus+=int(item.get("attack",0))
@@ -909,7 +922,7 @@ func doctor_service() -> void:
 		for key in item_metadata:
 			var item: Dictionary=item_metadata[key]
 			if not str(key).begins_with("1:") or int(item.get("required_level",99))>1 or int(item.get("attack",0))<=0: continue
-			if (int(item.get("characters",0)) & (1<<character_id))==0: continue
+			if (int(item.get("characters",0)) & (1<<server_hero()))==0: continue
 			var eligible: bool=true
 			for stat in stats:
 				if int(item.get("required_"+stat,0))>effective_stat(stat): eligible=false
@@ -991,7 +1004,7 @@ func equipment_reason(key: String,hero: int=-1) -> String:
 	if key.get_slice(":",0) not in ["1","2","3"]:return "Usable item" if key.begins_with("4:") else "Reference item"
 	var who: int=character_id if hero<0 else hero
 	var mask: int=int(item.get("characters",0))
-	if mask!=0 and (mask&(1<<who))==0:return "Not for "+HERO_NAMES[who]
+	if mask!=0 and (mask&(1<<server_hero(who)))==0:return "Not for "+HERO_NAMES[who]
 	if level<int(item.get("required_level",0)):return "Requires level %d" % int(item["required_level"])
 	for field in ["strength","spirit","dexterity","power"]:
 		if effective_stat(field)<int(item.get("required_"+field,0)):return "Requires %d %s" % [int(item["required_"+field]),field.capitalize()]
@@ -1001,7 +1014,7 @@ func allowed_heroes(key: String) -> String:
 	var mask: int=int(item_metadata.get(key,{}).get("characters",0));var names: PackedStringArray=[]
 	if mask==0 or (mask&511)==511:return "All heroes"
 	for who in range(HERO_NAMES.size()):
-		if mask==0 or (mask&(1<<who))!=0:names.append(HERO_NAMES[who])
+		if mask==0 or (mask&(1<<server_hero(who)))!=0:names.append(HERO_NAMES[who])
 	return ", ".join(names)
 
 func quick_food() -> bool:
@@ -1060,3 +1073,9 @@ func ensure_faction_mix() -> void:
 		var faction: int=signi(monster_reputation(int(enemy["monster_id"])))
 		if faction!=0 and not signs.has(faction):missing.append(enemy);signs.append(faction)
 	enemies=previous.slice(0,MAX_ENEMIES-missing.size())+missing
+
+
+func server_hero(hero: int=-1) -> int:
+	var chosen: int=character_id if hero<0 else hero
+	# Original server/CHR/eligibility order differs from the CTF display roster.
+	return 7 if chosen==6 else 6 if chosen==7 else chosen

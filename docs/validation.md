@@ -139,3 +139,14 @@ projectile references, honor-gated UI assignment and actual touch spell casting.
 frames are preserved. Captures are `analysis/v11-projectile.png` and
 `analysis/v11-skills.png`. All earlier gameplay, UI, save and mixed-audio checks
 also pass. No physical Android or iOS test has been performed.
+
+## v0.12 validation
+
+443 Godot checks and 52 Python/rule checks pass. New checks cover automatic
+monster casting and melee approach, source intervals, range restrictions,
+impairments, control resistance, cleansing by actual touch while frozen,
+mental protection and recovered timer scales, Scarecrow's exact three charges,
+remaining-charge persistence, malformed optional state, active-effects UI and
+Kitara/Lunarena equipment/save mapping. All previous progression, inventory,
+UI, respawn and mixed-audio checks pass. Captures: `v12-protection.png` and
+`v12-effects.png`. No physical Android or iOS testing has been performed.

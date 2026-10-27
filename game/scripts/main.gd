@@ -212,6 +212,7 @@ func _process(delta: float) -> void:
 	if ui_blocked():
 		world.advance_respawns(delta)
 		world.skills.tick(delta)
+		game_ui.refresh_effects()
 		return
 	status_age+=delta
 	status.modulate.a=1.0 if status_age<5 else maxf(0,1-(status_age-5))
@@ -344,7 +345,9 @@ func _update_ui() -> void:
 		button.disabled=id!=0 and (world.skills.requirement(id)!="Ready" or world.mana<world.skills.cost(id))
 		button.set_state(str(world.skills.cost(id)) if id!=0 else "+",maxf(cooldown,float(world.skills.cooldowns.get(id,0))/world.skills.RECOVERY))
 	var active: PackedStringArray=[]
-	for buff in world.skills.buffs.values():active.append("%s · %ds" % [buff["name"],int(ceil(buff["remaining"]))])
+	for name in world.skills.ailments:active.append("%s · %ds" % [str(name).to_upper(),int(ceil(world.skills.ailments[name]))])
+	for buff in world.skills.buffs.values():active.append("%s · %ds%s" % [buff["name"],int(ceil(buff["remaining"]))," · %d hits" % int(buff["charges"]) if buff.has("charges") else ""])
+	if active.size()>3:active=active.slice(0,3)+PackedStringArray(["More effects · BAG → SKILLS"])
 	buff_label.text="\n".join(active)
 	var food: int=0
 	for key in world.inventory:
@@ -443,7 +446,7 @@ func _draw() -> void:
 			var start: Vector2=iso(Vector2(effect["start_x"],effect["start_y"]))+camera_origin
 			var projectile: Vector2=start.lerp(pos,progress)+Vector2(0,-30)
 			_draw_image(str(frames[mini(frames.size()-1,int(progress*frames.size()))]),projectile)
-		var tint:=Color("7ee8c1") if effect["mode"]=="heal" else Color("87cefa")
+		var tint:=Color("f18192") if effect["mode"]=="hostile" else Color("7ee8c1") if effect["mode"]=="heal" else Color("87cefa")
 		tint.a=clampf(float(effect["remaining"])/.65,0,1)
 		draw_arc(pos+Vector2(0,-10),18+(1-tint.a)*26,0,TAU,32,tint,2,true)
 		draw_string(ThemeDB.fallback_font,pos+Vector2(-22,-65-(1-tint.a)*20),str(effect["label"]),HORIZONTAL_ALIGNMENT_LEFT,-1,18,tint)
@@ -460,7 +463,7 @@ func _draw_actor(point: Vector2, is_player: bool, enemy: Dictionary) -> void:
 		for ailment in ["sleep","freeze","blind","root","slow","stun"]:
 			if float(enemy.get(ailment+"_time",0))>0:state_text=ailment.to_upper();break
 		if not state_text.is_empty():draw_string(ThemeDB.fallback_font,point+Vector2(-20,-94),state_text,HORIZONTAL_ALIGNMENT_LEFT,-1,12,Color("ddc2f2"))
-	var appearance: int = world.character_id if is_player else int(enemy.get("appearance",world.appearance(int(enemy.get("monster_id", 0)))))
+	var appearance: int = world.server_hero() if is_player else int(enemy.get("appearance",world.appearance(int(enemy.get("monster_id", 0)))))
 	var sequences: Array = art.get("actors", {}).get(str(appearance), [])
 	if not sequences.is_empty():
 		var frames: Array = sequences[0]

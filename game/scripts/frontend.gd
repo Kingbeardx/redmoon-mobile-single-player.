@@ -96,7 +96,7 @@ func show_creation() -> void:
 	select_hero(0)
 
 func _hero_texture(hero: int) -> Texture2D:
-	var frames: Array=scene.art.get("actor_states",{}).get(str(hero),{}).get("idle",{}).get("2",[])
+	var frames: Array=scene.art.get("actor_states",{}).get(str(scene.world.server_hero(hero)),{}).get("idle",{}).get("2",[])
 	if frames.is_empty(): return null
 	var box: Array=scene.art.get("images",{}).get(str(frames[0]),[])
 	if box.size()<5: return null

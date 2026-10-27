@@ -64,8 +64,9 @@ func run() -> void:
 		if row["mode"]=="pending":continue
 		reset(w,int(row["hero"]));w.level=1000;w.honor=int(row["honor"]);w.stats["spirit"]=15000;w.mana=w.max_mana();w.hp=1
 		var weapons: Dictionary={"sword":"1:1","spear":"1:83","bow":"1:33","gun":"1:52","firearm":"1:52"}
+		if row["mode"]=="cleanse":w.skills.ailments={"root":3.0}
 		if row["weapon"]!="":w.equipment={"weapon":weapons[row["weapon"]]}
 		check(w.skills.cast(int(row["id"])),"supported original skill executes: "+row["name"]);count+=1
-	check(count==61,"all 61 admitted skills exercised")
+	check(count==70,"all 70 admitted skills exercised")
 	for suffix in ["", ".bak"]:DirAccess.remove_absolute(path+suffix)
 	print("SKILLS: %d checks, %d failures" % [checks,failures]);quit(1 if failures else 0)

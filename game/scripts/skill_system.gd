@@ -8,6 +8,10 @@ var slots: Array=[]
 var cooldowns: Dictionary={}
 var buffs: Dictionary={}
 var effects: Array=[]
+var ailments: Dictionary={}
+var control_grace: float=0
+const CONTROL_TYPES=["root","freeze","sleep"]
+const BUFF_MODES=["disguise","attack_up","haste","mana_shield","barrier","reload","range_up","fear_aura","status_guard","purify_guard","decoy","taunt"]
 const RECOVERY: float=.8 # Offline input pacing, not an original server delay.
 
 func setup(owner_world,data: Variant) -> void:
@@ -17,7 +21,7 @@ func setup(owner_world,data: Variant) -> void:
 	reset()
 
 func reset() -> void:
-	slots=[];cooldowns.clear();buffs.clear();effects.clear()
+	slots=[];cooldowns.clear();buffs.clear();effects.clear();ailments.clear();control_grace=0
 
 func for_hero(hero: int=-1) -> Array:
 	var rows: Array=[]
@@ -87,6 +91,12 @@ func assign(slot: int,id: int) -> bool:
 func tick(delta: float) -> void:
 	if world==null:return
 	var seconds: float=maxf(0,delta)
+	control_grace=maxf(0,control_grace-seconds)
+	for name in ailments.keys():
+		ailments[name]=maxf(0,float(ailments[name])-seconds)
+		if ailments[name]<=0:
+			ailments.erase(name)
+			if name in CONTROL_TYPES:control_grace=2.0
 	for id in cooldowns.keys():
 		cooldowns[id]=maxf(0,float(cooldowns[id])-seconds)
 		if cooldowns[id]<=0:cooldowns.erase(id)
@@ -124,8 +134,13 @@ func cast(id: int) -> bool:
 	if reason!="Ready":world.message=reason;return false
 	if world.hp<=0 or world.map_id<0:return false
 	if float(cooldowns.get(id,0))>0 or world.attack_cooldown>0:world.message="Wait for the skill to recover.";return false
-	if id==-1:return world.cast_skill()
+	if id==-1:
+		if not can_act():world.message="You cannot act while frozen or asleep.";return false
+		return world.cast_skill()
 	var row: Dictionary=entry(id);var mode: String=str(row["mode"]);var used: int=cost(id)
+	if not can_act() and mode not in ["cleanse","purify_guard"]:world.message="You cannot act while frozen or asleep.";return false
+	if mode=="cleanse" and ailments.is_empty():world.message="You have no harmful effects to cleanse.";return false
+	if mode=="decoy" and not active("decoy").is_empty():world.message="Scarecrow is still protecting you.";return false
 	if world.mana<used:world.message="Not enough mana for "+row["name"]+".";return false
 	var targets: Array=[]
 	var offensive: bool=mode in ["damage","root","weaken","slow","sleep","freeze","blind","damage_blind","damage_freeze","leech"]
@@ -166,16 +181,21 @@ func cast(id: int) -> bool:
 			enemy[mode+"_time"]=duration
 			if int(row["effect"])==16:enemy["stun_time"]=duration
 			effects.append({"skill_id":id,"start_x":world.player.x,"start_y":world.player.y,"facing":world.facing_for(world.player.direction_to(Vector2(enemy["x"],enemy["y"]))),"x":enemy["x"],"y":enemy["y"],"mode":mode,"remaining":.65,"label":row["name"]})
+	elif mode=="cleanse":
+		ailments.clear();control_grace=2.0
+		effects.append({"x":world.player.x,"y":world.player.y,"mode":"heal","remaining":.65,"label":"CLEANSED"})
 	else:
-		var duration: float=maxf(1,world.effective_stat("spirit")/20+int(row["duration_base"]))
+		if mode=="purify_guard":ailments.clear();control_grace=2.0
+		var duration: float=maxf(.2,(world.effective_stat("spirit")/int(row.get("duration_spirit_divisor",20))+int(row["duration_base"]))*float(row.get("duration_scale",1)))
 		buffs[id]={"mode":mode,"remaining":duration,"multiplier":row["multiplier"],"name":row["name"]}
+		if mode=="decoy":buffs[id]["charges"]=3
 		effects.append({"x":world.player.x,"y":world.player.y,"mode":"buff","remaining":.65,"label":row["name"]})
 	world.message=str(row["name"])+(" · %d target(s)" % targets.size() if offensive else "")+" · %d MP" % used
 	return true
 
 func serialize() -> Dictionary:
 	ensure_slots()
-	return {"slots":slots,"cooldowns":cooldowns,"buffs":buffs,"saved_at":Time.get_unix_time_from_system()}
+	return {"slots":slots,"cooldowns":cooldowns,"buffs":buffs,"ailments":ailments,"control_grace":control_grace,"saved_at":Time.get_unix_time_from_system()}
 
 func restore(saved: Dictionary) -> void:
 	reset();ensure_slots()
@@ -187,6 +207,14 @@ func restore(saved: Dictionary) -> void:
 			if id==0 or id==-1 or (not row.is_empty() and int(row.get("hero",-1))==world.character_id):slots[i]=id
 	var timestamp: Variant=saved.get("saved_at",0)
 	var away: float=maxf(0,Time.get_unix_time_from_system()-float(timestamp)) if world.valid_number(timestamp) else 3600
+	var prior_grace: Variant=saved.get("control_grace",0)
+	if world.valid_number(prior_grace):control_grace=clampf(float(prior_grace)-away,0,2)
+	var prior_ailments: Variant=saved.get("ailments",{})
+	if prior_ailments is Dictionary:
+		for name in prior_ailments:
+			if name not in ["root","freeze","sleep","blind","slow"] or not world.valid_number(prior_ailments[name]):continue
+			var remaining: float=clampf(float(prior_ailments[name])-away,0,3 if name in CONTROL_TYPES else 6)
+			if remaining>0:ailments[name]=remaining
 	var timers: Variant=saved.get("cooldowns",{})
 	if timers is Dictionary:
 		for key in timers:
@@ -196,7 +224,39 @@ func restore(saved: Dictionary) -> void:
 		for key in prior:
 			var id: int=int(key);var row: Dictionary=entry(id);var old: Variant=prior[key]
 			if row.is_empty() or int(row.get("hero",-1))!=world.character_id or not old is Dictionary:continue
-			if row["mode"] not in ["disguise","attack_up","haste","mana_shield","barrier","reload","range_up","fear_aura"]:continue
+			if row["mode"] not in BUFF_MODES:continue
 			if not world.valid_number(old.get("remaining")):continue
 			var remaining: float=minf(3600,float(old["remaining"])-away)
-			if remaining>0:buffs[id]={"mode":row["mode"],"remaining":remaining,"multiplier":row["multiplier"],"name":row["name"]}
+			if remaining>0:
+				if row["mode"]=="decoy":
+					var charges: Variant=old.get("charges",3)
+					if not world.valid_number(charges) or int(charges)<1:continue
+					buffs[id]={"mode":row["mode"],"remaining":remaining,"multiplier":row["multiplier"],"name":row["name"],"charges":clampi(int(charges),1,3)}
+				else:buffs[id]={"mode":row["mode"],"remaining":remaining,"multiplier":row["multiplier"],"name":row["name"]}
+
+
+func can_move() -> bool:
+	for name in CONTROL_TYPES:
+		if float(ailments.get(name,0))>0:return false
+	return true
+
+func can_act() -> bool:return not ailments.has("freeze") and not ailments.has("sleep")
+
+func apply_ailment(name: String,duration: float) -> bool:
+	if name not in ["root","freeze","sleep","blind","slow"]:return false
+	if not active("status_guard").is_empty() or not active("purify_guard").is_empty():return false
+	if name in CONTROL_TYPES and control_grace>0:return false
+	var remaining: float=clampf(duration,.2,3 if name in CONTROL_TYPES else 6)
+	ailments[name]=maxf(remaining,float(ailments.get(name,0)))
+	world.message="%s · %ds" % [name.to_upper(),int(ceil(remaining))]
+	return true
+
+func absorb_decoy() -> bool:
+	for id in buffs:
+		if buffs[id]["mode"]!="decoy":continue
+		var charges: int=int(buffs[id].get("charges",3))-1
+		if charges<=0:buffs.erase(id)
+		else:buffs[id]["charges"]=charges
+		world.message="Scarecrow blocked the attack · %d remaining" % charges
+		return true
+	return false

@@ -317,3 +317,15 @@ JOURNEY shows your honor and cap. The initial cap is ±100; original quests that
 raise it are not restored. Source faction groups are retained in the bounded
 population, including old saves. Respawns clear effects from the previous life.
 See [honor evidence and limits](docs/honor-reconstruction.md).
+
+## v0.12 monster casting and protection
+
+70 original player skill entries now have reconstructed behavior; 44 remain
+references. Monster AI uses 23 supported original skill entries with sourced
+IDs/ranges/intervals. Cleansing, mental protection, Scarecrow and Roar now work.
+SKILLS → ACTIVE EFFECTS explains live impairments and buffs. Control effects use
+short offline safety limits rather than the complete original status formulas.
+
+Kitara/Lunarena portraits, equipment checks and biography examples now follow
+the original server-to-display class mapping. Existing characters keep their
+identity and items. See [evidence and limits](docs/monster-skills-and-protection.md).

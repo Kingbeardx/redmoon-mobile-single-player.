@@ -10,7 +10,7 @@ CLIENT=Path('/workspace/scratch/client/Redmoon')
 class Skills(unittest.TestCase):
  @classmethod
  def setUpClass(cls):cls.catalog=build(SERVER,CLIENT);cls.rows={r['id']:r for r in cls.catalog['skills']}
- def test_count(self):self.assertEqual(self.catalog['summary'],{'player_skills':114,'reconstructed':61,'reference_only':53})
+ def test_count(self):self.assertEqual(self.catalog['summary'],{'player_skills':114,'reconstructed':70,'reference_only':44})
  def test_server_unlocks_take_priority(self):
   self.assertEqual(self.rows[3]['level'],50);self.assertEqual(self.rows[3]['client_differences']['level']['client'],10)
  def test_names_match_icon_not_slot(self):self.assertEqual(self.rows[2]['name'],'Heal');self.assertEqual(self.rows[3]['name'],'Soul Sphere')
@@ -20,6 +20,16 @@ class Skills(unittest.TestCase):
  def test_weapon_requirement(self):self.assertEqual(self.rows[26]['weapon'],'sword');self.assertEqual(self.rows[51]['weapon'],'firearm');self.assertEqual(self.rows[88]['weapon'],'bow')
  def test_special_not_generic_attack(self):self.assertEqual(self.rows[91]['mode'],'pending');self.assertEqual(self.rows[91]['kind'],1)
  def test_advanced_not_silently_generic(self):self.assertEqual(self.rows[29]['mode'],'pending');self.assertEqual(self.rows[6]['mode'],'pending')
+ def test_monster_source_records(self):
+  rows={r['id']:r for r in self.catalog['monster_skills']}
+  self.assertEqual(len(rows),36);self.assertEqual(sum(r['mode']!='pending' for r in rows.values()),23)
+  self.assertEqual(rows[181]['mode'],'root');self.assertEqual(rows[182]['multiplier'],250)
+  self.assertEqual(rows[203]['mode'],'pending');self.assertEqual(rows[201]['mode'],'pending')
+ def test_protection_timer_units(self):
+  self.assertEqual(self.rows[22]['duration_scale'],.2);self.assertEqual(self.rows[85]['duration_spirit_divisor'],10)
+  self.assertEqual(self.rows[311]['duration_scale'],1)
+ def test_new_cleanse_and_decoy_modes(self):
+  self.assertEqual(self.rows[73]['mode'],'cleanse');self.assertEqual(self.rows[40]['mode'],'decoy')
  def test_record_bounds(self):
   with self.assertRaises(FormatError):fields(b'\x00'*37)
  def test_mp_formula(self):
