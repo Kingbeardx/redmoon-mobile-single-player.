@@ -32,12 +32,12 @@ func run() -> void:
 		if "equip/use" in row.text and "× 1" in row.text:
 			row.emit_signal("pressed")
 			break
-	check(scene.world.hp == 55,"inventory UI uses food")
+	check(scene.world.hp == scene.world.max_hp(),"inventory UI uses food")
 	scene.inventory_panel.hide()
 	scene.save_button.emit_signal("pressed")
 	var second = load("res://scripts/world.gd").new()
 	second.initialize()
-	check(second.load_game() and second.defeated == scene.world.defeated and second.hp == 55,"resume saved session")
+	check(second.load_game() and second.defeated == scene.world.defeated and second.hp == scene.world.max_hp(),"resume saved session")
 	await process_frame
 	await RenderingServer.frame_post_draw
 	root.get_texture().get_image().save_png("/workspace/redmoon-mobile/analysis/end-to-end.png")

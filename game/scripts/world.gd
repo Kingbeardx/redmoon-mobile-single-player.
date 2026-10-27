@@ -24,6 +24,11 @@ var exits: Dictionary = {}
 var exit_marker_cache: Dictionary = {}
 var shop_available: bool = false
 var purchases: Dictionary = {}
+const HERO_NAMES: Array = ["Philar","Azlar","Sadad","Destino","Jarexx","Canon","Lunarena","Kitara","Lavita"]
+var item_metadata: Dictionary = {}
+var equipment: Dictionary = {}
+var stats: Dictionary = {"strength":90,"spirit":90,"dexterity":90,"power":90}
+var bonus_points: int = 0
 var item_tables: Dictionary = {}
 var catalog: Array = []
 var content: Dictionary = {}
@@ -69,6 +74,11 @@ func initialize(root: String = "res://data") -> bool:
 			if table.get("kind") == "items":
 				for item in table.get("records", []):
 					item_tables["%d:%d" % [int(table.get("category",0)), int(item.get("slot",0))]] = item.get("name", "Item")
+	var metadata = read_json(data_root + "/item-metadata.json")
+	if metadata is Dictionary:
+		item_metadata = metadata.get("items",{})
+		for key in item_metadata:
+			item_tables[key] = item_metadata[key]["name"]
 	var index: Variant = read_json(data_root + "/maps.json")
 	var tables: Variant = read_json(data_root + "/content.json")
 	if not index is Dictionary or not index.get("maps") is Array:
@@ -248,7 +258,7 @@ func tick(delta: float, direction: Vector2) -> void:
 			hp = maxi(0, hp - maxi(1,4 - armor_bonus))
 			enemy["cooldown"] = 1.4
 	if hp <= 0:
-		hp = PLAYER_HP
+		hp = max_hp()
 		player = find_start(current_map.get("start", [width / 2, height / 2]))
 		message = "Recovered at the map start. Your progress is kept."
 
@@ -272,7 +282,7 @@ func attack() -> bool:
 	attack_cooldown = 0.45
 	attack_flash = 0.18
 	var target: Dictionary = {}
-	var best: float = 2.8
+	var best: float = weapon_range()
 	for enemy in enemies:
 		if not bool(enemy.get("alive", false)):
 			continue
@@ -300,7 +310,8 @@ func attack() -> bool:
 		if xp >= level * 40:
 			xp -= level * 40
 			level += 1
-			hp = PLAYER_HP
+			bonus_points += 3 if level%100==0 else 2
+			hp = max_hp()
 			potions += 1
 			message = "Level %d · health restored, one heal gained." % level
 		else:
@@ -310,12 +321,12 @@ func attack() -> bool:
 	return true
 
 func heal() -> bool:
-	if potions <= 0 or hp >= PLAYER_HP:
+	if potions <= 0 or hp >= max_hp():
 		message = "Healing available when injured and a heal remains."
 		return false
 	potions -= 1
-	mana = mini(50, mana + 25)
-	hp = mini(PLAYER_HP, hp + 45)
+	mana = mini(max_mana(), mana + 25)
+	hp = mini(max_hp(), hp + 45)
 	message = "Health restored · %d heals remain" % potions
 	return true
 
@@ -341,7 +352,7 @@ func restore_map_state(state: Dictionary) -> void:
 
 func save_game(path: String = "user://progress.json") -> Error:
 	remember_map()
-	var record: Dictionary = {"version": SAVE_VERSION, "map_id": map_id, "hp": hp, "xp": xp, "level": level, "potions": potions, "defeated": defeated, "map_states": map_states, "purchases":purchases,"facing":facing,"armor_bonus":armor_bonus,"gold":gold,"inventory":inventory,"weapon_bonus":weapon_bonus,"character_id":character_id,"mana":mana,"bounty_claimed":bounty_claimed}
+	var record: Dictionary = {"version": SAVE_VERSION, "map_id": map_id, "hp": hp, "xp": xp, "level": level, "potions": potions, "defeated": defeated, "map_states": map_states, "stats":stats,"bonus_points":bonus_points,"equipment":equipment,"purchases":purchases,"facing":facing,"armor_bonus":armor_bonus,"gold":gold,"inventory":inventory,"weapon_bonus":weapon_bonus,"character_id":character_id,"mana":mana,"bounty_claimed":bounty_claimed}
 	var temporary: String = path + ".tmp"
 	var file := FileAccess.open(temporary, FileAccess.WRITE)
 	if file == null:
@@ -367,21 +378,29 @@ func load_game(path: String = "user://progress.json") -> bool:
 	if not enter_map(int(saved.get("map_id", -1)), false):
 		map_states = prior_states
 		return false
-	hp = clampi(int(saved.get("hp", PLAYER_HP)), 1, PLAYER_HP)
+	stats = saved.get("stats",{"strength":90,"spirit":90,"dexterity":90,"power":90}).duplicate()
+	for key in stats:
+		stats[key]=int(stats[key])
+	equipment=saved.get("equipment",{}).duplicate()
+	hp = clampi(int(saved.get("hp", PLAYER_HP)), 1, max_hp())
 	level = clampi(int(saved.get("level", 1)), 1, 1000)
+	bonus_points=maxi(0,int(saved.get("bonus_points",2*(level-1)+level/100)))
 	xp = clampi(int(saved.get("xp", 0)), 0, level * 40 - 1)
 	potions = clampi(int(saved.get("potions", 5)), 0, 9999)
 	defeated = maxi(0, int(saved.get("defeated", 0)))
 	armor_bonus = clampi(int(saved.get("armor_bonus",0)),0,3)
 	gold = clampi(int(saved.get("gold",0)),0,99999999)
 	weapon_bonus = clampi(int(saved.get("weapon_bonus",0)),0,50)
-	character_id = clampi(int(saved.get("character_id",1)),0,9)
-	mana = clampi(int(saved.get("mana",50)),0,50)
+	character_id = clampi(int(saved.get("character_id",1)),0,8)
+	mana = clampi(int(saved.get("mana",50)),0,max_mana())
 	bounty_claimed = bool(saved.get("bounty_claimed",false))
 	if saved.get("inventory",{}) is Dictionary:
 		inventory = saved.get("inventory",{}).duplicate()
 		for key in inventory:
 			inventory[key] = int(inventory[key])
+	equipment = saved.get("equipment",{}).duplicate()
+	if not equipment.is_empty():
+		refresh_equipment()
 	purchases = saved.get("purchases",{}).duplicate()
 	for key in purchases:
 		purchases[key] = int(purchases[key])
@@ -398,7 +417,7 @@ func valid_save(saved: Variant) -> bool:
 	for key in ["map_id", "hp", "xp", "level", "potions", "defeated"]:
 		if not valid_number(saved.get(key)):
 			return false
-	for key in ["gold","armor_bonus","weapon_bonus","character_id","mana","facing"]:
+	for key in ["gold","armor_bonus","weapon_bonus","character_id","mana","facing","bonus_points"]:
 		if saved.has(key) and not valid_number(saved[key]):
 			return false
 	for key in ["inventory","purchases"]:
@@ -408,6 +427,18 @@ func valid_save(saved: Variant) -> bool:
 		for value in bag.values():
 			if not valid_number(value) or float(value)<0 or float(value)>4000000001:
 				return false
+	var attributes: Variant=saved.get("stats",{"strength":90,"spirit":90,"dexterity":90,"power":90})
+	if not attributes is Dictionary:
+		return false
+	for attribute in ["strength","spirit","dexterity","power"]:
+		if not valid_number(attributes.get(attribute)) or float(attributes[attribute])<0 or float(attributes[attribute])>4294967295:
+			return false
+	var gear: Variant = saved.get("equipment",{})
+	if not gear is Dictionary or gear.size()>32:
+		return false
+	for key in gear:
+		if not gear[key] is String:
+			return false
 	var states: Variant = saved.get("map_states")
 	if not states is Dictionary or states.size() > catalog.size():
 		return false
@@ -437,11 +468,14 @@ func reset_progress(path: String = "user://progress.json") -> void:
 	gold = 0
 	inventory = {}
 	purchases = {}
+	equipment = {}
+	stats={"strength":90,"spirit":90,"dexterity":90,"power":90}
+	bonus_points=0
 	weapon_bonus = 0
 	armor_bonus = 0
 	bounty_claimed = false
 	mana = 50
-	hp = PLAYER_HP
+	hp = max_hp()
 	xp = 0
 	level = 1
 	potions = 5
@@ -459,21 +493,71 @@ func item_name(key: String) -> String:
 	return str(item_tables.get(key, "Recovered item " + key))
 
 func use_item(key: String) -> void:
-	if int(inventory.get(key,0)) <= 0:
+	if int(inventory.get(key,0))<=0:
 		return
-	if key.begins_with("1:"):
-		weapon_bonus = 6
-		message = "Weapon equipped: " + item_name(key)
-	elif key.begins_with("2:") or key.begins_with("3:"):
-		armor_bonus = 2
-		message = "Armor equipped: " + item_name(key)
-	elif key.begins_with("4:"):
-		hp = mini(PLAYER_HP, hp + 25)
-		inventory[key] -= 1
-		message = "Used " + item_name(key)
+	var item: Dictionary=item_metadata.get(key,{})
+	if item.is_empty():
+		message="This item effect has not been reconstructed yet."
+		return
+	if key.begins_with("4:"):
+		var health: int=int(item.get("hp",0))
+		var energy: int=int(item.get("mp",0))
+		if health==0 and energy==0:
+			message="This item's special effect is not implemented."
+			return
+		if (health==0 or hp>=max_hp()) and (energy==0 or mana>=max_mana()):
+			message="Health and mana are already full."
+			return
+		hp=mini(max_hp(),hp+health)
+		mana=mini(max_mana(),mana+energy)
+		inventory[key]-=1
+		message="Used "+item_name(key)
+	elif key.split(":")[0] in ["1","2","3"]:
+		if level<int(item.get("required_level",0)):
+			message="Requires level %d." % int(item["required_level"])
+			return
+		var mask: int=int(item.get("characters",0))
+		if mask!=0 and (mask & (1<<character_id))==0:
+			message="This item cannot be equipped by "+HERO_NAMES[character_id]+"."
+			return
+		for stat in ["strength","spirit","dexterity","power"]:
+			if int(item.get("required_"+stat,0))>effective_stat(stat):
+				message="Requires %s %d." % [stat,int(item["required_"+stat])]
+				return
+		equipment[str(int(item["slot"]))]=key
+		refresh_equipment()
+		message="Equipped "+item_name(key)
 	else:
-		message = "This item effect has not been reconstructed yet."
+		message="This item effect has not been reconstructed yet."
 	save_game()
+
+func refresh_equipment() -> void:
+	weapon_bonus=0
+	armor_bonus=0
+	for slot in equipment.keys():
+		var key: String=equipment[slot]
+		var item: Dictionary=item_metadata.get(key,{})
+		var mask: int=int(item.get("characters",0))
+		if item.is_empty() or int(inventory.get(key,0))<=0 or (mask!=0 and (mask & (1<<character_id))==0):
+			equipment.erase(slot)
+			continue
+		weapon_bonus+=int(item.get("attack",0))
+		armor_bonus+=int(item.get("defense",0))
+	hp=mini(hp,max_hp())
+	mana=mini(mana,max_mana())
+
+func weapon_range() -> float:
+	var result: float=1.8
+	for key in equipment.values():
+		if str(key).begins_with("1:"):
+			result=maxf(result,float(item_metadata.get(key,{}).get("range",1))+0.5)
+	return result
+
+func item_details(key: String) -> String:
+	var item: Dictionary=item_metadata.get(key,{})
+	if item.is_empty():
+		return "Effect unknown"
+	return "ATK %d  DEF %d  HP +%d  MP +%d  Lv %d  Price %d" % [item.get("attack",0),item.get("defense",0),item.get("hp",0),item.get("mp",0),item.get("required_level",0),item.get("price",0)]
 
 func cast_skill() -> bool:
 	if mana < 20:
@@ -511,7 +595,8 @@ func buy_heal() -> void:
 func sell_item(key: String) -> void:
 	if shop_available and int(inventory.get(key,0)) > 0:
 		inventory[key] -= 1
-		gold += 5
+		gold += maxi(0,int(item_metadata.get(key,{}).get("price",10))/2)
+		refresh_equipment()
 		save_game()
 
 func claim_bounty() -> void:
@@ -572,7 +657,7 @@ func zone_stock() -> Array:
 		if int(item["count"])<=int(purchases.get(purchase_key,0)):
 			continue
 		var base: int = 100 if int(item["kind"])==1 else (80 if int(item["kind"]) in [2,3] else 10)
-		stock.append({"key":key,"purchase_key":purchase_key,"name":item_name(key),"price":maxi(1,int(base*int(item["price_percent"])/100)),"count":int(item["count"])})
+		stock.append({"key":key,"purchase_key":purchase_key,"name":item_name(key),"price":maxi(0,int(int(item_metadata.get(key,{}).get("price",base))*int(item["price_percent"])/100)),"count":int(item["count"])})
 	return stock
 
 func buy_stock(purchase_key: String) -> bool:
@@ -603,3 +688,27 @@ func map_exit_rectangles() -> Array:
 			markers.append(rect)
 	exit_marker_cache[map_id]=markers
 	return markers
+
+func effective_stat(attribute: String) -> int:
+	var value: int=int(stats.get(attribute,90))
+	for key in equipment.values():
+		value+=int(item_metadata.get(key,{}).get(attribute,0))
+	return value & 0xffffffff
+
+func max_hp() -> int:
+	var power: int=effective_stat("power")
+	return maxi(1,(50+(power/15)*(power/10)) & 0xffffffff)
+
+func max_mana() -> int:
+	var spirit: int=effective_stat("spirit")
+	if spirit<=20000:
+		return maxi(1,(50+(spirit/15)*(spirit/10)) & 0xffffffff)
+	return maxi(1,(273*spirit-0x2a9df6) & 0xffffffff)
+
+func allocate_stat(attribute: String) -> bool:
+	if bonus_points<=0 or not stats.has(attribute):
+		return false
+	stats[attribute]=int(stats[attribute])+1
+	bonus_points-=1
+	save_game()
+	return true

@@ -13,7 +13,13 @@ func _initialize() -> void:
 	w.gold=500
 	var stock: Array=w.zone_stock()
 	check(stock.size()>0,"source market stock exists")
-	var item: Dictionary=stock[0]
+	var item: Dictionary={}
+	for candidate in stock:
+		if int(candidate["price"])>0:
+			item=candidate
+			break
+	check(not item.is_empty(),"nonzero-price source stock available")
+	w.gold=int(item["price"])+100
 	var gold: int=w.gold
 	check(w.buy_stock(item["purchase_key"]),"buy source-listed item")
 	check(w.gold==gold-int(item["price"]) and int(w.inventory[item["key"]])>0,"purchase updates inventory and gold")

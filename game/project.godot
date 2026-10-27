@@ -3,6 +3,7 @@ config_version=5
 
 [application]
 config/name="RedMoon Offline Prototype"
+config/icon="res://icon.svg"
 run/main_scene="res://main.tscn"
 config/features=PackedStringArray("4.5", "GL Compatibility")
 config/description="Offline reconstruction prototype using recovered server map and spawn data. Original client artwork and reconstructed offline gameplay rules."

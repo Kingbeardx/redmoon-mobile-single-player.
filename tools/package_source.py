@@ -8,10 +8,10 @@ OUTPUT = ROOT / 'build/redmoon-mobile-source.zip'
 INCLUDE_DIRS = ('tools', 'tests', 'docs', 'data', 'game', 'references')
 EVIDENCE = ('archive-manifest.json', 'pe-report.json', 'coff-symbols.json',
             'svMapServer-selected.asm', 'content-comparison.json',
-            'nested-map-manifest.json', 'end-to-end.png', 'v03-python-tests.log',
-            'v03-game-tests.log', 'v03-adventure.log', 'v03-input.log',
-            'v03-features.log', 'v03-recovery.log', 'v03-end-to-end.log',
-            'v03-rules.log', 'v03-build.json', 'v03-packing.log')
+            'nested-map-manifest.json', 'end-to-end.png', 'v04-python-tests.log',
+            'v04-game-tests.log', 'v04-adventure.log', 'v04-input.log',
+            'v04-features.log', 'v04-recovery.log', 'v04-end-to-end.log',
+            'v04-rules.log', 'v04-items.log', 'v04-build.json', 'v04-packing.log')
 
 
 def main():

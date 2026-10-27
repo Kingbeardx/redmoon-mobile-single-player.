@@ -132,7 +132,7 @@ func _build_ui() -> void:
 	root_ui.add_child(bottom)
 	stats = _label("", 18)
 	hp_bar = ProgressBar.new()
-	hp_bar.max_value = world.PLAYER_HP
+	hp_bar.max_value = world.max_hp()
 	hp_bar.show_percentage = false
 	hp_bar.add_theme_stylebox_override("background", _style(Color(0.18, 0.12, 0.17), Color(0.18, 0.12, 0.17), 4))
 	hp_bar.add_theme_stylebox_override("fill", _style(RED, RED, 4))
@@ -277,7 +277,8 @@ func _save() -> void:
 func _update_ui() -> void:
 	if not ready_world:
 		return
-	stats.text = "LV %d     HP %d / %d     XP %d / %d     MP %d / 50     GOLD %d" % [world.level, world.hp, world.PLAYER_HP, world.xp, world.level * 40,world.mana,world.gold]
+	stats.text = "LV %d     HP %d / %d     XP %d / %d     MP %d / %d     GOLD %d" % [world.level, world.hp, world.max_hp(), world.xp, world.level * 40,world.mana,world.max_mana(),world.gold]
+	hp_bar.max_value=world.max_hp()
 	hp_bar.value = world.hp
 	location_label.text = "ZONE %05d     %d × %d     X %d   Y %d" % [world.map_id, world.width, world.height, int(world.player.x), int(world.player.y)]
 	status.text = world.message
@@ -447,12 +448,13 @@ func _build_inventory() -> void:
 	scroll.add_child(inventory_list)
 	inventory_panel.hide()
 
-func _row(text_value: String, action: Callable) -> void:
+func _row(text_value: String, action: Callable) -> Button:
 	var button := Button.new()
 	button.text = text_value
 	button.custom_minimum_size.y = 42
 	button.pressed.connect(action)
 	inventory_list.add_child(button)
+	return button
 
 func _show_inventory() -> void:
 	for child in inventory_list.get_children():
@@ -461,18 +463,25 @@ func _show_inventory() -> void:
 	inventory_panel.show()
 	_row("CLOSE · resume adventure", func(): inventory_panel.hide())
 	_row("Gold %d | Weapon +%d | Defeated %d | Offline bounty: defeat 10 creatures" % [world.gold, world.weapon_bonus, world.defeated], func(): pass)
+	_row("Available stat points: %d" % world.bonus_points,func():pass)
+	for attribute in ["strength","spirit","dexterity","power"]:
+		var stat_key: String=attribute
+		_row("%s %d · allocate +1" % [attribute.capitalize(),world.effective_stat(attribute)],func():world.allocate_stat(stat_key);_show_inventory())
 	_row("Claim bounty reward (10 kills): 100 gold + 3 heals", func(): world.claim_bounty(); _show_inventory())
-	_row("Power strike (20 mana) · Mana %d / 50" % world.mana, func(): inventory_panel.hide(); world.cast_skill())
+	_row("Power strike (20 mana) · Mana %d / %d" % [world.mana,world.max_mana()], func(): inventory_panel.hide(); world.cast_skill())
 	_row("Use nearby EXIT", func(): inventory_panel.hide(); world.use_exit(); textures.clear(); _sync_map_selection())
 	_row("Music: %s · client MIDI track" % ("ON" if music_enabled else "OFF"),func():toggle_music();_show_inventory())
 	_row("Sound: %s" % ("ON" if sounds_enabled else "OFF"), func(): sounds_enabled = not sounds_enabled; _show_inventory())
 	_row("Run: %s" % ("ON" if world.running else "OFF"), func(): world.running = not world.running; _show_inventory())
-	_row("Zone market · reconstructed prices", _market_rows)
+	_row("Zone market · recovered base prices", _market_rows)
 	_row("Interact with nearby NPC / shop", func(): world.interact(); _shop_rows())
 	for key in world.inventory:
 		var item_key: String = str(key)
-		_row("%s × %d · equip/use" % [world.item_name(item_key), world.inventory[item_key]], func(): world.use_item(item_key); _show_inventory())
-	_row("Character appearance: cycle recovered heroes", func(): world.character_id = (world.character_id+1) % 10; world.save_game(); _show_inventory())
+		if int(world.inventory[item_key])<=0:
+			continue
+		var button: Button = _row("%s × %d · equip/use\n%s" % [world.item_name(item_key), world.inventory[item_key],world.item_details(item_key)], func(): world.use_item(item_key); _show_inventory())
+		_set_item_icon(button,item_key)
+	_row("Hero: %s · cycle original classes" % world.HERO_NAMES[world.character_id], func(): world.character_id = (world.character_id+1) % 9; world.refresh_equipment(); world.save_game(); _show_inventory())
 	_row(world.message, func(): pass)
 
 func _shop_rows() -> void:
@@ -482,7 +491,7 @@ func _shop_rows() -> void:
 	_row("Buy healing charge · 15 gold", func(): world.buy_heal(); _show_inventory())
 	for key in world.inventory:
 		var item_key: String = str(key)
-		_row("Sell %s · 5 gold" % world.item_name(item_key), func(): world.sell_item(item_key); _show_inventory())
+		_row("Sell %s · %d gold" % [world.item_name(item_key),maxi(0,int(world.item_metadata.get(item_key,{}).get("price",10))/2)], func(): world.sell_item(item_key); _show_inventory())
 
 func play_sound(action: String) -> void:
 	if not sounds_enabled:
@@ -512,7 +521,8 @@ func _market_rows() -> void:
 		_row("No supported market stock in this zone.",func():pass)
 	for item in stock:
 		var purchase_key: String=str(item["purchase_key"])
-		_row("Buy %s · %d gold" % [item["name"],item["price"]],func():world.buy_stock(purchase_key);_market_rows())
+		var button: Button = _row("Buy %s · %d gold\n%s" % [item["name"],item["price"],world.item_details(item["key"])],func():world.buy_stock(purchase_key);_market_rows())
+		_set_item_icon(button,item["key"])
 
 func toggle_music() -> void:
 	music_enabled = not music_enabled
@@ -534,3 +544,15 @@ func toggle_music() -> void:
 		music.play()
 	else:
 		music.stop()
+
+func _set_item_icon(button: Button,key: String) -> void:
+	var sprite: String=art.get("item_icons",{}).get(key,"")
+	if sprite.is_empty():
+		return
+	var box: Array=art["images"][sprite]
+	var payload: String=str(box[4]) if box.size()>4 else sprite
+	var image := Image.new()
+	if image.load_png_from_buffer(FileAccess.get_file_as_bytes("res://art/"+payload+".pngdata"))==OK:
+		button.icon=ImageTexture.create_from_image(image)
+		button.expand_icon=true
+		button.add_theme_constant_override("icon_max_width",40)

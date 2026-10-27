@@ -4,44 +4,36 @@ Validation date: 2026-10-26. Engine: Godot 4.5.1 stable, standard GDScript build
 All original software was inspected statically; no legacy Windows program,
 database, installer, PHP page, TCL script, or network service was run.
 
-## Completed checks
+## Version 0.4 checks
 
-- All three RARs extracted successfully with 7-Zip 25.01. Re-extraction matched
-  every file hash. The libarchive extractor initially reported a CRC error;
-  7-Zip successfully verified/extracted the archives, so reproduction uses 7-Zip.
-- Seventeen Python importer tests passed, including every supplied SMM file,
-  byte-for-byte item/skill table reconstruction, malformed row handling, and
-  truncated/oversized input rejection. Four recovered-rule tests passed.
-- Godot imported the project and ran 24 gameplay smoke checks: real map/data
-  loading, boundary blocking, movement, wall tunneling, combat cooldown and XP,
-  healing, save/load, map-state persistence, and malformed-save rejection.
-- Five Godot viewport-injected touch checks passed: joystick press/release,
-  second-finger attack, joystick ownership, and single-charge healing. These
-  test the input routing in the game, not physical touchscreen hardware.
-- Rendered the real main scene using Xvfb/OpenGL Mesa llvmpipe and inspected
-  `analysis/prototype-preview.png` at 1280×720. It shows the recovered map grid,
-  source-derived monster IDs, placeholder actors, touch controls, and HUD.
-- Android debug export completed using the official Godot 4.5.1 template,
-  OpenJDK 21, Android platform/build tools 35.0.0, and a local debug keystore.
-  `apksigner verify --verbose` reports valid APK signature schemes v2 and v3.
-  Package: `org.redmoon.offlineprototype`; ARM64; min API 24; target API 35.
-- APK contents and Android manifest were inspected for packaged game data,
-  architecture, minimum SDK, and offline permissions.
+- 24 Python importer/format tests and four statically recovered-rule tests passed.
+- 78 Godot checks passed: 24 core gameplay, nine adventure/persistence, five
+  injected multitouch, 13 recovered upstream features, eight market/recovery,
+  13 recovered-item/attribute rules and six rendered end-to-end checks.
+- Rendered UI tests ran under Xvfb/Mesa, covering movement, attack controls,
+  inventory food consumption, music playback and save/reload. Inventory artwork
+  and layout were inspected in `analysis/v04-inventory.png`.
+- Independent item decoding recovered 784 active item records and icons with
+  source prices, equipment slots, class masks and requirements. Binary parser
+  tests verify known item values and reject truncated records.
+- Android export uses Godot 4.5.1, Java 21 and SDK/build tools 35. The APK is
+  ARM64, minimum API 24, target API 35, package `org.redmoon.offlineprototype`.
+  Signing and archive/content checks are recorded in `analysis/v04-build.json`.
+- Original Windows executables remain unexecuted. Source archives and extracted
+  artwork are excluded from Git. Third-party parser licenses remain attached.
 
-The build can log an ADB-daemon connection warning in this container: no Android
-device is attached. That warning is separate from the completed signed APK export.
+## Limits
 
-## Not verified or not implemented
+No Android phone/emulator, iOS device or macOS/Xcode build was available.
+Injected input tests do not establish physical touchscreen or mobile performance.
+No iOS IPA exists. Device lifecycle, battery and platform graphics need testing.
 
-No Android emulator/phone, iPhone/iPad, or Mac/Xcode runtime test was performed.
-There is no iOS IPA or App Store/Play Store release build. Performance, battery,
-device-specific graphics, physical multitouch, and lifecycle behavior require
-device tests. No claim of original gameplay fidelity follows from prototype tests.
-
-There is no original artwork/audio, faithful combat model, inventory/equipment,
-class system, skill execution, quests, shops, original respawns/drops, or event
-interpreter. Extracted data and the separate statically recovered rule subset
-are retained for those later implementations.
+Original maps/art/audio, inventory, equipment, source-listed shops, bounded
+spawn/respawn/drop handling and selected exits are integrated. Combat damage,
+XP thresholds, class skills, quest scripts, special effects and full event logic
+remain partial or reconstructed. There is no functioning legacy multiplayer
+service or verified network implementation. Some server/client artwork IDs
+may disagree because these resources come from different community versions.
 
 ## Android reproduction
 

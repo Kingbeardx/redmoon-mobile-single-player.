@@ -4,7 +4,7 @@ Android game rebuilt from the supplied server data and the RMA 7.0 client.
 
 ## Play
 
-Install `build/redmoon-mobile-adventure.apk` on ARM64 Android 7.0 or newer.
+Install `build/Redmoon-Mobile-v0.4.apk` on ARM64 Android 7.0 or newer.
 Use the movement pad and ATTACK/HEAL buttons. BAG / TALK opens inventory,
 equipment, the skill attack, a one-time offline bounty and nearby NPC shops.
 Gold NPC markers identify interaction locations. Select maps from the upper-right
@@ -15,7 +15,7 @@ Desktop controls: WASD/arrows, Space to attack, E to heal.
 
 - 196 server maps with collision, original terrain/object rendering where the
   matching client map is readable; converter recovers 252 client map files.
-- 83,005 composed sprite entries, including directional hero/NPC animations;
+- 83,543 composed sprite entries, including directional hero/NPC animations;
   identical image payloads are shared to reduce download size.
 - Touch movement and simultaneous attack; map selection and minimap.
 - Combat, a mana-powered attack, source-derived loot records, inventory, weapon
@@ -26,8 +26,8 @@ Desktop controls: WASD/arrows, Space to attack, E to heal.
 
 ## Fidelity limits
 
-Combat damage, item effects/prices, skill attack, XP thresholds and bounty are
-reconstruction rules, not verified original behavior. The server dataset is older
+Combat damage, special item effects, skill attack, XP thresholds, half-price
+buyback and bounty remain reconstruction rules, not verified original behavior. The server dataset is older
 than this client; some appearance IDs may refer to different artwork. Walking/running/idle direction mapping now follows the retained Bevy source.
 Terrain/object depth sorting is improved but remains approximate.
 Unsupported references are retained in client-art.json; nonpositive source
@@ -105,6 +105,34 @@ python3 tools/pack_art.py --archive /path/outside/game/unused-art
 ```
 
 Music rendering requires Linux FluidSynth, a GM soundfont and ffmpeg. The generated
-art/audio remains outside Git. Version 0.3 is Android debug-signed with the same
+art/audio remains outside Git. Version 0.4 is Android debug-signed with the same
 package and development key as the earlier build so an in-place upgrade should
 retain saves. No physical Android/iOS device testing has been performed.
+
+## Version 0.4
+
+- Decoded 784 active item records: original attack, defense, healing, mana,
+  base prices, class masks, stat/level requirements, equipment slots and range.
+- English names recovered through the client message table; 784 original item
+  icons now appear in inventory and shops.
+- Nine named heroes; equipment checks class and requirements and occupies its
+  source slot. Gear contributes its recorded stat bonuses.
+- Spend level-up points in BAG. HP/MP and point awards use the statically
+  recovered formulas. Starting attributes of 90 remain a chosen offline baseline.
+- New equipment/attribute progress persists, with migration for older saves.
+
+Item decoding independently implements documented layout facts from rm-lib
+commit `cc1393454b45f9228c5966220d818c2ed4f7b69b`; GPL library code and its
+proprietary test files were not copied into this game. Format reference:
+https://github.com/briansteffens/rm-lib/blob/cc1393454b45f9228c5966220d818c2ed4f7b69b/docs/RSI.md
+
+Run these after the main asset conversion and before image packing:
+
+```
+python3 tools/item_metadata.py /path/to/Redmoon
+python3 tools/item_icons.py /path/to/Redmoon
+```
+
+The separately checked RMA 6-to-7 update contains 13 files already identical to
+this client, so overlaying it adds no missing content. Later Korean packages in
+external research reports have not been acquired or validated here.
