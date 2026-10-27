@@ -194,8 +194,10 @@ func show_bio() -> void:
 	var examples: Array=info.get("weapon_examples",[])
 	var text: String="Uses psychic or magical abilities, not physical weapons." if examples.is_empty() else "Compatible examples: "+", ".join(PackedStringArray(examples))
 	var detail:=label(text,26,words);detail.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART;detail.horizontal_alignment=HORIZONTAL_ALIGNMENT_LEFT
-	var skills:=label("AVAILABLE ACTIONS
-Attack · Power Strike (20 mana) · Heal · Food
-Power Strike is the current reconstructed mana skill. Original class skill trees are still incomplete.",26,words);skills.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART;skills.horizontal_alignment=HORIZONTAL_ALIGNMENT_LEFT
+	var summary: PackedStringArray=[]
+	for skill in scene.world.skills.for_hero(selected_hero):
+		if int(skill["kind"])==0 and int(skill["honor"])==0:
+			summary.append("Lv %d · %s%s" % [int(skill["level"]),skill["name"]," (not playable yet)" if skill["mode"]=="pending" else ""])
+	var skills:=label("CHARACTER SKILLS\n"+"\n".join(summary)+"\nSkills unlock at their original levels. Open BAG → SKILLS to inspect the full list and assign three touch slots. Advanced and honor skills are still being reconstructed.",26,words);skills.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART;skills.horizontal_alignment=HORIZONTAL_ALIGNMENT_LEFT
 	button("BACK TO CHARACTER SELECTION",func():bio_panel.hide(),bio_body)
 	bio_panel.show()

@@ -63,11 +63,11 @@ func run() -> void:
 	check(not scene.root_ui.has_node("TopPanel") and not scene.root_ui.has_node("BottomPanel"),"opaque full-width HUD bars removed")
 	check(scene.skill_button.visible and scene.food_button.visible and scene.hp_bar.size.y>=30,"icon skill and item hotbar with readable health gauge")
 	check(ProjectSettings.get_setting("display/window/stretch/aspect")=="expand","wide phone canvas expands without fixed-aspect letterboxing")
-	w.mana=50;w.attack_cooldown=0;w.enemies=[{"monster_id":1,"x":w.player.x,"y":w.player.y,"hp":100,"alive":true}]
+	w.character_id=1;w.skills.reset();w.mana=50;w.attack_cooldown=0;w.enemies=[{"monster_id":1,"x":w.player.x,"y":w.player.y,"hp":100,"alive":true}]
 	scene._update_ui()
 	for pressed in [true,false]:
 		var touch:=InputEventScreenTouch.new();touch.index=1;touch.pressed=pressed;touch.position=scene.skill_button.get_global_rect().get_center();root.push_input(touch,true)
-	check(w.mana==30 and w.enemies[0]["hp"]<100,"visible skill slot casts mana-powered attack")
+	check(w.mana==47 and w.enemies[0]["hp"]<100,"visible class skill slot casts Psychic Shock at original percentage cost")
 	w.inventory["4:1"]=1;w.hp=1;scene._update_ui()
 	for pressed in [true,false]:
 		var touch:=InputEventScreenTouch.new();touch.index=1;touch.pressed=pressed;touch.position=scene.food_button.get_global_rect().get_center();root.push_input(touch,true)

@@ -19,6 +19,10 @@ var shop_hero_only: bool=true
 var shop_selection: String=""
 var shop_buttons: Dictionary={}
 var shop_buy_button: Button
+var selected_skill: int=0
+var skill_buttons: Dictionary={}
+var skill_assign_buttons: Array=[]
+var skill_cast_button: Button
 const ATTRIBUTES=["strength","spirit","dexterity","power"]
 const DESCRIPTIONS={"strength":"Equipment requirements", "spirit":"Maximum mana and equipment", "dexterity":"Equipment requirements", "power":"Maximum health and equipment"}
 
@@ -57,7 +61,7 @@ func open_page(title: String,kind: String) -> void:
 	label(title,header,34).size_flags_horizontal=Control.SIZE_EXPAND_FILL
 	button("CLOSE",close,header)
 	var tabs:=HBoxContainer.new();tabs.add_theme_constant_override("separation",10);content.add_child(tabs)
-	button("BAG",show_bag,tabs);button("CHARACTER"+(" +%d" % scene.world.bonus_points if scene.world.bonus_points>0 else ""),show_stats,tabs);button("JOURNEY",show_journal,tabs)
+	button("BAG",show_bag,tabs);button("CHARACTER"+(" +%d" % scene.world.bonus_points if scene.world.bonus_points>0 else ""),show_stats,tabs);button("SKILLS",show_skills,tabs);button("JOURNEY",show_journal,tabs)
 
 func show_bag() -> void:
 	open_page("INVENTORY  ·  %d GOLD" % scene.world.gold,"bag")
@@ -185,7 +189,7 @@ func show_journal() -> void:
 	button("MINIMAP: "+("ON" if scene.minimap_visible else "OFF"),func():scene.minimap_visible=not scene.minimap_visible;scene.queue_redraw();show_journal(),list)
 	button("TOWN GUIDE / TRAVEL",func():close();scene.inventory_panel.show();scene._travel_rows(),list)
 	button("TALK TO NEARBY NPC",talk_nearby,list)
-	button("POWER STRIKE · 20 MANA",func():close();scene.world.cast_skill(),list)
+	button("CHARACTER SKILLS & HOTBAR",show_skills,list)
 	button("USE NEARBY EXIT",func():close();scene.world.use_exit();scene.textures.clear();scene._sync_map_selection(),list)
 	button("CLAIM BOUNTY · 10 DEFEATS",func():scene.world.claim_bounty();show_journal(),list)
 	button("MUSIC & SOUND",show_audio,list)
@@ -296,3 +300,61 @@ func show_shop() -> void:
 		label(scene.world.item_details(key),details,24)
 		if scene.world.gold<price:label("You need %d more gold." % (price-scene.world.gold),details,24)
 	label(scene.world.message,content,24).max_lines_visible=2
+
+func skill_texture(id: int) -> Texture2D:
+	if scene.skill_textures.has(id):return scene.skill_textures[id]
+	var sprite: String=scene.art.get("skill_icons",{}).get(str(id),"")
+	var box: Array=scene.art.get("images",{}).get(sprite,[])
+	if box.size()<4:return load("res://ui/strike.svg")
+	var image:=Image.new();var payload: String=str(box[4]) if box.size()>4 else sprite
+	if image.load_png_from_buffer(FileAccess.get_file_as_bytes("res://art/"+payload+".pngdata"))!=OK:return null
+	var texture: Texture2D=ImageTexture.create_from_image(image);scene.skill_textures[id]=texture;return texture
+
+func show_skills() -> void:
+	var system=scene.world.skills;system.ensure_slots()
+	open_page("%s · SKILLS · LEVEL %d" % [scene.world.HERO_NAMES[scene.world.character_id].to_upper(),scene.world.level],"skills")
+	skill_buttons.clear();skill_assign_buttons.clear()
+	var row: Dictionary=system.entry(selected_skill)
+	if row.is_empty() or (selected_skill!=-1 and int(row.get("hero",-1))!=scene.world.character_id):
+		selected_skill=int(system.slots[0]);row=system.entry(selected_skill)
+	if row.is_empty():selected_skill=-1;row=system.entry(-1)
+	var body:=HBoxContainer.new();body.size_flags_vertical=Control.SIZE_EXPAND_FILL;body.add_theme_constant_override("separation",24);content.add_child(body)
+	var scroll:=ScrollContainer.new();scroll.custom_minimum_size.x=390;scroll.size_flags_vertical=Control.SIZE_EXPAND_FILL;body.add_child(scroll)
+	var list:=VBoxContainer.new();list.size_flags_horizontal=Control.SIZE_EXPAND_FILL;list.add_theme_constant_override("separation",8);scroll.add_child(list)
+	var rows: Array=system.for_hero();rows.push_front(system.entry(-1))
+	for item in rows:
+		var id: int=int(item["id"]);var ready: bool=system.requirement(id)=="Ready"
+		var title: String=str(item["name"])+"\nLv %d · %s" % [int(item["level"]),"READY" if ready else "LOCKED"]
+		var option:=button(title,func():selected_skill=id;show_skills(),list)
+		option.icon=skill_texture(id);option.expand_icon=true;option.add_theme_constant_override("icon_max_width",54);option.add_theme_font_size_override("font_size",23);option.custom_minimum_size.y=82
+		option.modulate=Color.WHITE if ready else Color("a7a4ae")
+		if id==selected_skill:option.add_theme_stylebox_override("normal",scene._style(Color("3b3440"),Color("f0ca7a")))
+		skill_buttons[id]=option
+	var detail_scroll:=ScrollContainer.new();detail_scroll.size_flags_horizontal=Control.SIZE_EXPAND_FILL;detail_scroll.size_flags_vertical=Control.SIZE_EXPAND_FILL;body.add_child(detail_scroll)
+	var details:=VBoxContainer.new();details.size_flags_horizontal=Control.SIZE_EXPAND_FILL;details.add_theme_constant_override("separation",12);detail_scroll.add_child(details)
+	var heading:=HBoxContainer.new();heading.add_theme_constant_override("separation",14);details.add_child(heading)
+	var icon:=TextureRect.new();icon.texture=skill_texture(selected_skill);icon.custom_minimum_size=Vector2(90,64);icon.expand_mode=TextureRect.EXPAND_IGNORE_SIZE;icon.stretch_mode=TextureRect.STRETCH_KEEP_ASPECT_CENTERED;heading.add_child(icon)
+	label(str(row["name"]),heading,32).size_flags_horizontal=Control.SIZE_EXPAND_FILL
+	var reason: String=system.requirement(selected_skill)
+	label(reason.to_upper(),details,28)
+	skill_cast_button=button("CAST NOW",func():close();scene._cast_skill_id(selected_skill),details)
+	skill_cast_button.disabled=reason!="Ready" or scene.world.mana<system.cost(selected_skill)
+	var binds:=HBoxContainer.new();binds.add_theme_constant_override("separation",8);details.add_child(binds)
+	for slot in range(3):
+		var index: int=slot
+		var bind:=button("SLOT %d" % (slot+1),func():
+			if system.assign(index,selected_skill):scene._save();show_skills(),binds)
+		bind.size_flags_horizontal=Control.SIZE_EXPAND_FILL;bind.disabled=reason!="Ready";skill_assign_buttons.append(bind)
+	label(str(row["description"]),details,26)
+	var encoded: int=int(row["mana_encoded"])
+	var mana_text: String="%d MP" % encoded if encoded<1000000000 else "%d%% of maximum MP" % mini(100,encoded-1000000000)
+	if selected_skill in [1,2]:mana_text="1 MP per 2 HP restored"
+	label("Level %d  ·  %s\nRange %s tiles  ·  %s" % [int(row["level"]),mana_text,str(row["range"]),"AREA" if bool(row["area"]) else "SINGLE / SELF"],details,25)
+	var honor: int=int(row["honor"])
+	if honor!=0:label("Honor required: %+d · Your honor: %+d\nHonor rewards are not yet available in this offline adventure." % [honor,scene.world.honor],details,25)
+	if row["mode"]=="pending":label("This original skill is recorded here, but its effects are not playable yet."+(" It needs the special DP system." if int(row["kind"])==1 else ""),details,25)
+	else:label("Original requirements and icons. Combat effects are reconstructed for offline play."+(" Nearby-ally healing applies to you in single-player." if row["mode"]=="heal" and selected_skill!=1 else ""),details,23)
+	label("YOUR HOTBAR",details,25)
+	for slot in range(3):
+		var equipped: Dictionary=system.entry(int(system.slots[slot]))
+		button("%d · %s  × CLEAR" % [slot+1,equipped.get("name","Empty")],func():system.assign(slot,0);scene._save();show_skills(),details)

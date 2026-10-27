@@ -20,7 +20,7 @@ func setup(title: String,texture: Texture2D,color: Color) -> void:
 func layout() -> void:
 	if picture==null:return
 	picture.position=Vector2(size.x*.27,14);picture.size=Vector2(size.x*.46,size.y*.46)
-	caption.position=Vector2(0,size.y*.65);caption.size=Vector2(size.x,30)
+	caption.position=Vector2(0,size.y*.60);caption.size=Vector2(size.x,44)
 	badge.position=Vector2(size.x*.58,2);badge.size=Vector2(size.x*.4,28)
 func set_state(label_text: String,remaining: float) -> void:
 	badge.text=label_text;cooldown=clampf(remaining,0,1);picture.modulate=Color(1,1,1,.35) if disabled else Color.WHITE;queue_redraw()

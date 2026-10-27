@@ -285,3 +285,21 @@ spawn groups. Timers advance during menus, remember time spent away, and return
 enemies to their recorded home positions. Older slow-only or empty outdoor save
 states receive source-backed common spawns. Rare source timers remain long.
 The offline population cap and simplified combat remain reconstruction choices.
+
+## v0.10 original character skills
+
+BAG → SKILLS shows the chosen character's original skill list with descriptions,
+level/honor/weapon requirements and original icons. Assign an available skill to
+any of three touch slots. An empty slot opens the skill menu. Keyboard: 1/Q, 2,
+3 cast slots; K opens skills. Training Strike remains an explicit offline fallback.
+
+All 114 original player entries are catalogued; 49 entries have reconstructed
+behavior and 65 remain non-playable references. These counts include honor
+variants. Original server requirements take precedence over modified RMA values.
+Honor rewards and DP are not yet reconstructed; honor branches remain locked at
+neutral honor. Damage/effects run in the offline combat model, not a fully restored
+original server. See [skill evidence and limits](docs/skills-reconstruction.md).
+
+Regenerate with `python3 tools/skill_import.py /path/to/Redmoon`. The importer
+requires the supplied 3.8 server skill table and a decoded client-art manifest.
+Original icons and generated game data remain outside source control.

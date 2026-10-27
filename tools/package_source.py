@@ -15,7 +15,13 @@ EVIDENCE = ('archive-manifest.json', 'pe-report.json', 'coff-symbols.json',
             'v09-creation_ui.log', 'v09-end_to_end.log', 'v09-accessibility.log',
             'v09-inventory_dialogue.log', 'v09-music_playback.log', 'v09-v09_features.log',
             'v09-python.log', 'v09-rules.log', 'v09-build.json',
-            'new-character.asm', 'default-position.asm')
+            'new-character.asm', 'default-position.asm',
+            'skills-evidence.json', 'skills-evidence.asm', 'v10-skills.png', 'v10-hotbar.png',
+            'v10-build.json', 'v10-python.log', 'v10-rules.log',
+            *('v10-'+name+'.log' for name in ('smoke','adventure','input_smoke','upstream_features',
+            'recovery_and_market','recovered_items','new_adventure','doctor_dialogue',
+            'inventory_dialogue','creation_ui','accessibility','end_to_end','music_playback',
+            'v09_features','skills','skill_ui')))
 
 
 def main():

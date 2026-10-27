@@ -24,6 +24,8 @@ var weapon_bonus: int = 0
 var character_id: int = 1
 var mana: int = 50
 var bounty_claimed: bool = false
+var honor: int = 0
+var skills=preload("res://scripts/skill_system.gd").new()
 var motion: Vector2 = Vector2.ZERO
 var facing: int = 6
 var running: bool = false
@@ -73,6 +75,7 @@ func read_json(path: String) -> Variant:
 
 func initialize(root: String = "res://data") -> bool:
 	data_root = root
+	skills.setup(self,read_json(data_root+"/skills.json"))
 	var journey_data = read_json(data_root+"/journey.json")
 	if journey_data is Dictionary:
 		journey = journey_data
@@ -239,6 +242,7 @@ func tick(delta: float, direction: Vector2) -> void:
 	var dt: float = clampf(delta, 0.0, 0.1)
 	elapsed += dt
 	advance_respawns(maxf(0,delta))
+	skills.tick(maxf(0,delta))
 	arrival_grace=maxf(0,arrival_grace-dt)
 	motion = direction
 	if direction.length_squared() > 0.001:
@@ -246,7 +250,7 @@ func tick(delta: float, direction: Vector2) -> void:
 	attack_cooldown = maxf(0.0, attack_cooldown - dt)
 	attack_flash = maxf(0.0, attack_flash - dt)
 	if direction.length_squared() > 0.001:
-		player = move_entity(player, direction.limit_length(1.0) * MOVE_SPEED * (1.6 if running else 1.0) * dt)
+		player = move_entity(player, direction.limit_length(1.0) * MOVE_SPEED * skills.factor("haste") * (1.6 if running else 1.0) * dt)
 	for enemy in enemies:
 		if not bool(enemy.get("alive", false)):
 			continue
@@ -254,9 +258,12 @@ func tick(delta: float, direction: Vector2) -> void:
 		enemy["moving"] = false
 		var distance: float = position.distance_to(player)
 		enemy["cooldown"] = maxf(0.0, float(enemy["cooldown"]) - dt)
+		if not skills.active("disguise").is_empty():continue
+		if float(enemy.get("stun_time",0))>0:continue
 		if distance < 8.0 and distance > 1.35:
+			if float(enemy.get("root_time",0))>0:continue
 			var toward: Vector2 = position.direction_to(player)
-			var moved: Vector2 = move_entity(position,toward * 1.1 * dt)
+			var moved: Vector2 = move_entity(position,toward * 1.1 * (.5 if float(enemy.get("slow_time",0))>0 else 1.0) * dt)
 			if not clear_sight(position,player) and navigation != null:
 				enemy["nav_cooldown"] = maxf(0,float(enemy.get("nav_cooldown",0))-dt)
 				if float(enemy["nav_cooldown"]) <= 0:
@@ -267,14 +274,14 @@ func tick(delta: float, direction: Vector2) -> void:
 					enemy["nav_cooldown"] = 0.5
 				var next := Vector2(float(enemy.get("nav_x",position.x)),float(enemy.get("nav_y",position.y)))
 				toward = position.direction_to(next)
-				moved = move_entity(position,toward*1.1*dt)
+				moved = move_entity(position,toward*1.1*(.5 if float(enemy.get("slow_time",0))>0 else 1.0)*dt)
 			position = moved
 			enemy["facing"] = facing_for(toward)
 			enemy["moving"] = true
 			enemy["x"] = position.x
 			enemy["y"] = position.y
 		elif distance <= 1.6 and float(enemy["cooldown"]) <= 0.0 and clear_sight(position,player) and arrival_grace<=0:
-			hp = maxi(0, hp - maxi(1,4 - armor_bonus))
+			receive_damage(maxi(1,4-armor_bonus))
 			enemy["cooldown"] = 1.4
 	if hp <= 0 and adventure_started:
 		enter_map(9)
@@ -304,7 +311,7 @@ func move_entity(origin: Vector2, movement: Vector2) -> Vector2:
 func attack() -> bool:
 	if attack_cooldown > 0.0 or map_id < 0:
 		return false
-	attack_cooldown = 0.45
+	attack_cooldown = 0.45 / skills.factor("reload")
 	attack_flash = 0.18
 	var target: Dictionary = {}
 	var best: float = weapon_range()
@@ -318,7 +325,14 @@ func attack() -> bool:
 	if target.is_empty():
 		message = "Move closer to a creature to attack."
 		return false
-	target["hp"] = maxi(0, int(target["hp"]) - 12 - weapon_bonus - (level - 1) * 2)
+	skills.break_disguise()
+	damage_enemy(target,maxi(1,int((12+weapon_bonus+(level-1)*2)*skills.factor("attack_up"))))
+	return true
+
+func damage_enemy(target: Dictionary,amount: int) -> void:
+	if not bool(target.get("alive",false)):return
+	if float(target.get("weaken_time",0))>0:amount=int(ceil(amount/0.75))
+	target["hp"]=maxi(0,int(target["hp"])-amount)
 	if int(target["hp"]) <= 0:
 		target["alive"] = false
 		target["respawn_timer"] = maxf(1,float(target.get("respawn_seconds",60)))
@@ -346,7 +360,12 @@ func attack() -> bool:
 			message = "Creature %d defeated · +10 prototype XP" % int(target["monster_id"])
 	else:
 		message = "Hit creature %d" % int(target["monster_id"])
-	return true
+
+func receive_damage(amount: int) -> void:
+	amount=maxi(1,int(ceil(amount*skills.factor("barrier"))))
+	if not skills.active("mana_shield").is_empty():
+		var absorbed: int=mini(mana,amount);mana-=absorbed;amount-=absorbed
+	hp=maxi(0,hp-amount)
 
 func heal() -> bool:
 	if potions <= 0 or hp >= max_hp():
@@ -384,7 +403,7 @@ func restore_map_state(state: Dictionary) -> void:
 
 func save_game(path: String = "user://progress.json") -> Error:
 	remember_map()
-	var record: Dictionary = {"roster_version":2,"player_name":player_name,"adventure_started":adventure_started,"tutorial_stage":tutorial_stage,"tutorial_kills":tutorial_kills,"visited":visited,"bank_gold":bank_gold,"version": SAVE_VERSION, "map_id": map_id, "hp": hp, "xp": xp, "level": level, "potions": potions, "defeated": defeated, "map_states": map_states, "stats":stats,"bonus_points":bonus_points,"equipment":equipment,"purchases":purchases,"facing":facing,"armor_bonus":armor_bonus,"gold":gold,"inventory":inventory,"weapon_bonus":weapon_bonus,"character_id":character_id,"mana":mana,"bounty_claimed":bounty_claimed}
+	var record: Dictionary = {"honor":honor,"skills":skills.serialize(),"roster_version":2,"player_name":player_name,"adventure_started":adventure_started,"tutorial_stage":tutorial_stage,"tutorial_kills":tutorial_kills,"visited":visited,"bank_gold":bank_gold,"version": SAVE_VERSION, "map_id": map_id, "hp": hp, "xp": xp, "level": level, "potions": potions, "defeated": defeated, "map_states": map_states, "stats":stats,"bonus_points":bonus_points,"equipment":equipment,"purchases":purchases,"facing":facing,"armor_bonus":armor_bonus,"gold":gold,"inventory":inventory,"weapon_bonus":weapon_bonus,"character_id":character_id,"mana":mana,"bounty_claimed":bounty_claimed}
 	var temporary: String = path + ".tmp"
 	var file := FileAccess.open(temporary, FileAccess.WRITE)
 	if file == null:
@@ -433,6 +452,8 @@ func load_game(path: String = "user://progress.json") -> bool:
 		if character_id==6:character_id=7
 		elif character_id==7:character_id=6
 	mana = clampi(int(saved.get("mana",50)),0,max_mana())
+	honor=clampi(int(saved.get("honor",0)),-10000,10000)
+	skills.restore(saved.get("skills",{}) if saved.get("skills",{}) is Dictionary else {})
 	bounty_claimed = bool(saved.get("bounty_claimed",false))
 	if saved.get("inventory",{}) is Dictionary:
 		inventory = saved.get("inventory",{}).duplicate()
@@ -457,7 +478,7 @@ func valid_save(saved: Variant) -> bool:
 	for key in ["map_id", "hp", "xp", "level", "potions", "defeated"]:
 		if not valid_number(saved.get(key)):
 			return false
-	for key in ["roster_version","tutorial_stage","tutorial_kills","bank_gold","gold","armor_bonus","weapon_bonus","character_id","mana","facing","bonus_points"]:
+	for key in ["honor","roster_version","tutorial_stage","tutorial_kills","bank_gold","gold","armor_bonus","weapon_bonus","character_id","mana","facing","bonus_points"]:
 		if saved.has(key) and not valid_number(saved[key]):
 			return false
 	for key in ["inventory","purchases"]:
@@ -508,6 +529,7 @@ func valid_save(saved: Variant) -> bool:
 	return true
 
 func reset_progress(path: String = "user://progress.json") -> void:
+	honor=0;skills.reset()
 	for suffix in ["", ".bak", ".tmp"]:
 		if FileAccess.file_exists(path+suffix): DirAccess.remove_absolute(path+suffix)
 	map_states = {}
@@ -603,7 +625,8 @@ func weapon_range() -> float:
 	for key in equipment.values():
 		if str(key).begins_with("1:"):
 			result=maxf(result,float(item_metadata.get(key,{}).get("range",1))+0.5)
-	return result
+	var ranged: Dictionary=skills.active("range_up")
+	return result+float(ranged.get("multiplier",0))
 
 func item_details(key: String) -> String:
 	var item: Dictionary=item_metadata.get(key,{})
@@ -623,6 +646,9 @@ func cast_skill() -> bool:
 	weapon_bonus += 24
 	var hit: bool = attack()
 	weapon_bonus = prior
+	if not hit:
+		mana+=20
+		attack_cooldown=0
 	return hit
 
 func npc_position(npc: Dictionary) -> Vector2:
@@ -826,6 +852,7 @@ func create_character(chosen_name: String, hero: int, path: String="user://progr
 	# Preserve the previous save/backup until the new adventure is saved atomically.
 	map_states={};inventory={"4:1":5,"5:93":1,"5:94":1,"5:95":1};equipment={};purchases={}
 	stats={"strength":10,"spirit":10,"dexterity":10,"power":10}
+	honor=0;skills.reset()
 	bonus_points=0;level=1;xp=0;gold=0;bank_gold=0;defeated=0;potions=5
 	weapon_bonus=0;armor_bonus=0;bounty_claimed=false;character_id=hero;player_name=clean
 	adventure_started=true;tutorial_stage=0;tutorial_kills=0;visited=[]

@@ -40,6 +40,9 @@ var mp_text: Label
 var xp_bar: ProgressBar
 var mp_bar: ProgressBar
 var skill_button: Button
+var extra_skill_buttons: Array=[]
+var skill_textures: Dictionary={}
+var buff_label: Label
 var food_button: Button
 var minimap_visible: bool=false
 var status_age: float=0
@@ -154,7 +157,16 @@ func _build_ui() -> void:
 		if not OS.has_feature("mobile"):_skill())
 	food_button.pressed.connect(func():
 		if not OS.has_feature("mobile"):_food())
-	skill_button.tooltip_text="Power Strike · 20 mana";heal_button.tooltip_text="Healing charge";food_button.tooltip_text="Use food or a drink from your bag"
+	for slot in range(1,3):
+		var index: int=slot
+		var extra: Button=_action("SKILL","strike",Color("75b3f4"));extra_skill_buttons.append(extra)
+		extra.pressed.connect(func():
+			if not OS.has_feature("mobile"):_skill(index))
+		extra.caption.add_theme_font_size_override("font_size",19)
+		extra.caption.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART;extra.caption.size.y=44
+	skill_button.caption.add_theme_font_size_override("font_size",19);skill_button.caption.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART;skill_button.caption.size.y=44
+	buff_label=_label("",23);buff_label.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART
+	skill_button.tooltip_text="Character skill";heal_button.tooltip_text="Healing charge";food_button.tooltip_text="Use food or a drink from your bag"
 	map_select=OptionButton.new();map_select.add_theme_font_size_override("font_size",24);map_select.add_theme_stylebox_override("normal",_style(INK,Color("776550")));map_select.focus_mode=Control.FOCUS_NONE;map_select.item_selected.connect(_change_map);root_ui.add_child(map_select)
 	var menu:=_button("MENU",INK,Color("776550"));menu.name="Menu";menu.pressed.connect(func():_save();frontend.has_save=true;frontend.show_title())
 	save_button=_button("SAVE",INK);save_button.hide();save_button.pressed.connect(_save)
@@ -183,6 +195,9 @@ func _layout() -> void:
 	skill_button.position=Vector2(view.x-254,view.y-128);skill_button.size=Vector2(100,100)
 	heal_button.position=Vector2(view.x-368,view.y-128);heal_button.size=Vector2(100,100)
 	food_button.position=Vector2(view.x-482,view.y-128);food_button.size=Vector2(100,100)
+	for index in range(extra_skill_buttons.size()):
+		extra_skill_buttons[index].position=Vector2(view.x-254-index*114,view.y-242);extra_skill_buttons[index].size=Vector2(100,100)
+	buff_label.position=Vector2(20,210);buff_label.size=Vector2(370,100)
 	help_label.position=Vector2(20,152);help_label.size=Vector2(370,48)
 	status.position=Vector2(view.x*.5-240,view.y-224);status.size=Vector2(480,66)
 	if inventory_panel!=null:inventory_panel.position=Vector2(40,90);inventory_panel.size=Vector2(view.x-80,view.y-114)
@@ -196,6 +211,7 @@ func _process(delta: float) -> void:
 	if audio_controller.player!=null:audio_controller.set_map(world.map_id)
 	if ui_blocked():
 		world.advance_respawns(delta)
+		world.skills.tick(delta)
 		return
 	status_age+=delta
 	status.modulate.a=1.0 if status_age<5 else maxf(0,1-(status_age-5))
@@ -226,6 +242,9 @@ func _input(event: InputEvent) -> void:
 	if not ready_world or ui_blocked():
 		return
 	if event is InputEventScreenTouch and event.pressed:
+		for index in range(extra_skill_buttons.size()):
+			if extra_skill_buttons[index].get_global_rect().has_point(event.position):
+				_skill(index+1);get_viewport().set_input_as_handled();return
 		if attack_button.get_global_rect().has_point(event.position):
 			_attack()
 			get_viewport().set_input_as_handled()
@@ -245,6 +264,10 @@ func _unhandled_key_input(event: InputEvent) -> void:
 	elif event.physical_keycode == KEY_E:
 		_heal()
 	elif event.physical_keycode == KEY_Q:_skill()
+	elif event.physical_keycode == KEY_1:_skill()
+	elif event.physical_keycode == KEY_2:_skill(1)
+	elif event.physical_keycode == KEY_3:_skill(2)
+	elif event.physical_keycode == KEY_K:game_ui.show_skills()
 	elif event.physical_keycode == KEY_R:_food()
 	elif event.physical_keycode == KEY_F5:
 		_save()
@@ -254,7 +277,8 @@ func _notification(what: int) -> void:
 		audio_controller.player.stream_paused=what==NOTIFICATION_APPLICATION_PAUSED
 	if what==NOTIFICATION_APPLICATION_PAUSED:paused_at=Time.get_unix_time_from_system()
 	elif what==NOTIFICATION_APPLICATION_RESUMED and paused_at>0:
-		world.advance_respawns(maxf(0,Time.get_unix_time_from_system()-paused_at));paused_at=0
+		var away: float=maxf(0,Time.get_unix_time_from_system()-paused_at)
+		world.advance_respawns(away);world.skills.tick(away);paused_at=0
 	if what in [NOTIFICATION_APPLICATION_PAUSED,NOTIFICATION_WM_CLOSE_REQUEST,NOTIFICATION_APPLICATION_FOCUS_OUT] and ready_world and is_instance_valid(frontend.panel) and not frontend.panel.visible:
 		world.save_game()
 
@@ -310,7 +334,18 @@ func _update_ui() -> void:
 	var cooldown: float=world.attack_cooldown/.45
 	attack_button.set_state("",cooldown)
 	heal_button.disabled=world.potions<=0;heal_button.set_state(str(world.potions),0)
-	skill_button.disabled=world.mana<20;skill_button.set_state("20MP",cooldown)
+	world.skills.ensure_slots()
+	var actions: Array=[skill_button]+extra_skill_buttons
+	for index in range(3):
+		var id: int=int(world.skills.slots[index]);var row: Dictionary=world.skills.entry(id);var button: Button=actions[index]
+		button.caption.text=str(row.get("name","SKILLS")).to_upper()
+		button.picture.texture=game_ui.skill_texture(id)
+		button.tooltip_text=str(row.get("name","Choose a skill"))+" · Open BAG → SKILLS to assign"
+		button.disabled=id!=0 and (world.skills.requirement(id)!="Ready" or world.mana<world.skills.cost(id))
+		button.set_state(str(world.skills.cost(id)) if id!=0 else "+",maxf(cooldown,float(world.skills.cooldowns.get(id,0))/world.skills.RECOVERY))
+	var active: PackedStringArray=[]
+	for buff in world.skills.buffs.values():active.append("%s · %ds" % [buff["name"],int(ceil(buff["remaining"]))])
+	buff_label.text="\n".join(active)
 	var food: int=0
 	for key in world.inventory:
 		if str(key).begins_with("4:"):food+=int(world.inventory[key])
@@ -319,8 +354,13 @@ func _update_ui() -> void:
 	if int(portrait.get_meta("hero",-1))!=world.character_id:
 		portrait.texture=frontend._hero_texture(world.character_id);attack_button.picture.texture=load("res://ui/strike.svg") if world.character_id in [0,1] else load("res://ui/attack.svg");portrait.set_meta("hero",world.character_id)
 
-func _skill() -> void:
-	if world.cast_skill():play_sound("attack")
+func _skill(slot: int=0) -> void:
+	world.skills.ensure_slots()
+	if int(world.skills.slots[slot])==0:game_ui.show_skills();return
+	_cast_skill_id(int(world.skills.slots[slot]))
+
+func _cast_skill_id(id: int) -> void:
+	if world.skills.cast(id):play_sound("heal" if world.skills.entry(id).get("mode")=="heal" else "attack")
 	_update_ui()
 
 func _food() -> void:
@@ -395,6 +435,12 @@ func _draw() -> void:
 		var alpha: float = world.attack_flash / 0.18
 		draw_arc(point + Vector2(0, -8), 35 + (1.0 - alpha) * 22, -PI * 0.9, PI * 0.15, 24, Color(1.0, 0.74, 0.5, alpha), 4, true)
 
+	for effect in world.skills.effects:
+		var pos: Vector2=iso(Vector2(effect["x"],effect["y"]))+camera_origin
+		var tint:=Color("7ee8c1") if effect["mode"]=="heal" else Color("87cefa")
+		tint.a=clampf(float(effect["remaining"])/.65,0,1)
+		draw_arc(pos+Vector2(0,-10),18+(1-tint.a)*26,0,TAU,32,tint,2,true)
+		draw_string(ThemeDB.fallback_font,pos+Vector2(-22,-65-(1-tint.a)*20),str(effect["label"]),HORIZONTAL_ALIGNMENT_LEFT,-1,18,tint)
 	draw_set_transform(Vector2.ZERO)
 	_draw_minimap(screen)
 
@@ -613,7 +659,7 @@ func npc_at_screen(position: Vector2) -> Dictionary:
 func _unhandled_input(event: InputEvent) -> void:
 	if not ready_world or ui_blocked():return
 	if (event is InputEventScreenTouch and event.pressed) or (event is InputEventMouseButton and event.pressed and event.button_index==MOUSE_BUTTON_LEFT):
-		for action in [attack_button,heal_button,skill_button,food_button]:
+		for action in [attack_button,heal_button,skill_button,food_button]+extra_skill_buttons:
 			if action.get_global_rect().has_point(event.position):return
 		var npc:=npc_at_screen(event.position)
 		if npc.is_empty():return

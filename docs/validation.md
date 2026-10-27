@@ -114,3 +114,16 @@ migration, original biography display, touch Strike/food actions, and an actual
 1600x720 expanded canvas. UI screenshots are `v09-hud.png`, `v09-shop.png` and
 `v09-bio.png`. Existing dialogue, inventory, creation, audio mixer and multitouch
 checks remain green. No physical phone test has been performed.
+
+## v0.10 skill validation
+
+327 Godot checks pass, including 92 skill-backend checks and 14 rendered skill UI
+checks. All 49 supported original entries execute in class/level/honor/equipment
+fixtures. Tests cover MP percentages, rejected casts, area targeting, Cure,
+shields, buffs, control effects, class/level/honor/weapon gating, hotbar binding,
+real touch input, save restoration, elapsed timers and malformed optional state.
+36 Python importer tests and four recovered arithmetic checks pass (40 total).
+Use separate XDG_DATA_HOME profiles for independent UI tests; an existing local
+save/audio/accessibility setting otherwise changes clean-install expectations.
+Rendered tests used Xvfb, Mesa and Godot's Dummy output with actual mixed PCM
+capture. No physical Android or iOS device test has been performed.
