@@ -88,3 +88,18 @@ Doctor greeting, help and post-heal responses use speaker-specific guidance.
 Older saves receive a working healing choice without changing their progress.
 The prior 173-check full suite and parser checks are recorded above; they were
 not all repeated for this text/service hotfix. No phone test was performed.
+
+## Version 0.8 audio and preservation update
+
+198 Godot checks passed: the previous 173 checks, ten Doctor dialogue checks
+and 15 music checks. The music suite captures mixed PCM with AudioEffectCapture;
+it verifies non-silent output, real silence at zero volume, volume restoration,
+automatic playback, persistence, next track, hospital theme selection, fallback
+and audio panel fit. The 24 Python importer tests and four recovered-rule tests
+also passed. No physical Android device was tested.
+
+48 source MIDI hashes match the existing client and every converted track reaches
+the end of its source duration (some have instrument release tails). Five themes
+and 20 map assignments pass the conservative cross-client gates. Blood Sun's
+custom gameplay tables, recordings, and client code are excluded. Build/signing
+and packaged-audio verification are in `analysis/v08-build.json`.

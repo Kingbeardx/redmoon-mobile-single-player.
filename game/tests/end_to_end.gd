@@ -12,6 +12,7 @@ func run() -> void:
 	await process_frame
 	scene.frontend.close_for_play()
 	scene.set_process(false)
+	if scene.music_enabled:scene.toggle_music()
 	scene.toggle_music()
 	check(scene.music != null and scene.music.playing,"music toggle plays original client composition")
 	scene.toggle_music()

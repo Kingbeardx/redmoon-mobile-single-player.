@@ -7,15 +7,16 @@ ROOT = Path(__file__).resolve().parents[1]
 OUTPUT = ROOT / 'build/redmoon-mobile-source.zip'
 INCLUDE_DIRS = ('tools', 'tests', 'docs', 'data', 'game', 'references')
 EVIDENCE = ('archive-manifest.json', 'pe-report.json', 'coff-symbols.json',
-            'svMapServer-selected.asm', 'content-comparison.json',
-            'nested-map-manifest.json', 'v07-bag.png', 'v07-stats.png', 'v07-dialogue.png',
-            'v07-smoke.log', 'v07-adventure.log', 'v07-input_smoke.log',
-            'v07-upstream_features.log', 'v07-recovery_and_market.log',
-            'v07-recovered_items.log', 'v07-new_adventure.log',
-            'v07-creation_ui.log', 'v07-end_to_end.log', 'v07-accessibility.log', 'v07-inventory_dialogue.log',
-            'v07-python.log', 'v07-rules.log', 'v07-build.json',
-            'new-character.asm', 'default-position.asm',
-            'v071-doctor_dialogue.log', 'v071-inventory_dialogue.log', 'v071-build.json')
+            'svMapServer-selected.asm', 'content-comparison.json', 'nested-map-manifest.json',
+            'v08-audio.png', 'v07-bag.png', 'v07-stats.png', 'v07-dialogue.png',
+            'v08-smoke.log', 'v08-adventure.log', 'v08-input_smoke.log',
+            'v08-upstream_features.log', 'v08-recovery_and_market.log',
+            'v08-recovered_items.log', 'v08-new_adventure.log', 'v08-doctor_dialogue.log',
+            'v08-creation_ui.log', 'v08-end_to_end.log', 'v08-accessibility.log',
+            'v08-inventory_dialogue.log', 'v08-music_playback.log', 'v08-music-integrity.json',
+            'v08-python.log', 'v08-rules.log', 'v08-build.json', 'music-matches.json',
+            'blood-sun-inspection.json', 'v08-preservation-admission.json',
+            'new-character.asm', 'default-position.asm')
 
 
 def main():

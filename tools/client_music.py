@@ -23,12 +23,12 @@ def render(mid,font,out):
  renderer=bind('new_fluid_file_renderer',[ptr],ptr)(synth)
  process=bind('fluid_file_renderer_process_block',[ptr],integer);status=bind('fluid_player_get_status',[ptr],integer)
  blocks=0
- while status(player)==1 and blocks<22050*300//64:
+ while status(player)==1 and blocks<22050*900//64:
   if process(renderer)!=0:raise ValueError('render failure')
   blocks+=1
  bind('delete_fluid_file_renderer',[ptr],None)(renderer)
  bind('delete_fluid_player',[ptr],None)(player);bind('delete_fluid_synth',[ptr],None)(synth);bind('delete_fluid_settings',[ptr],None)(settings)
- subprocess.run(['ffmpeg','-v','error','-y','-i',str(wav),'-c:a','libvorbis','-q:a','3','-f','ogg',str(out)],check=True)
+ subprocess.run(['ffmpeg','-v','error','-y','-i',str(wav),'-af','loudnorm=I=-18:TP=-1.5:LRA=11','-ar','22050','-c:a','libvorbis','-q:a','3','-f','ogg',str(out)],check=True)
  wav.unlink();print('Rendered',mid.name,'blocks',blocks,'bytes',out.stat().st_size)
 if __name__=='__main__':
  p=argparse.ArgumentParser();p.add_argument('midi',type=Path);p.add_argument('--font',type=Path,default=Path('/usr/share/sounds/sf2/TimGM6mb.sf2'));a=p.parse_args();render(a.midi,a.font,Path('game/art/music.oggdata'))

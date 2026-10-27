@@ -18,7 +18,8 @@ var draw_epoch: int = 0
 var sounds_enabled: bool = true
 var audio_players: Dictionary = {}
 var music: AudioStreamPlayer
-var music_enabled: bool = false
+var music_enabled: bool = true
+var audio_controller=preload("res://scripts/music_controller.gd").new()
 var inventory_panel: PanelContainer
 var inventory_list: VBoxContainer
 
@@ -73,6 +74,9 @@ func _ready() -> void:
 		map_select.disabled = true
 	get_viewport().size_changed.connect(_layout)
 	_layout()
+	add_child(audio_controller)
+	audio_controller.setup(self)
+	if is_instance_valid(frontend.panel) and frontend.panel.visible:frontend.show_title()
 	_update_ui()
 
 func _style(background: Color, border: Color, radius: int = 10) -> StyleBoxFlat:
@@ -214,6 +218,7 @@ func _layout() -> void:
 func _process(delta: float) -> void:
 	if not ready_world:
 		return
+	if audio_controller.player!=null:audio_controller.set_map(world.map_id)
 	if ui_blocked():
 		return
 	var direction: Vector2 = joystick.direction
@@ -261,7 +266,9 @@ func _unhandled_key_input(event: InputEvent) -> void:
 		_save()
 
 func _notification(what: int) -> void:
-	if ready_world and (frontend.panel==null or not frontend.panel.visible) and (what == NOTIFICATION_APPLICATION_PAUSED or what == NOTIFICATION_WM_CLOSE_REQUEST or what == NOTIFICATION_APPLICATION_FOCUS_OUT):
+	if what in [NOTIFICATION_APPLICATION_PAUSED,NOTIFICATION_APPLICATION_RESUMED] and is_instance_valid(audio_controller) and is_instance_valid(audio_controller.player):
+		audio_controller.player.stream_paused=what==NOTIFICATION_APPLICATION_PAUSED
+	if what in [NOTIFICATION_APPLICATION_PAUSED,NOTIFICATION_WM_CLOSE_REQUEST,NOTIFICATION_APPLICATION_FOCUS_OUT] and ready_world and is_instance_valid(frontend.panel) and not frontend.panel.visible:
 		world.save_game()
 
 func _change_map(index: int) -> void:
@@ -302,6 +309,7 @@ func _save() -> void:
 func _update_ui() -> void:
 	if not ready_world:
 		return
+	if audio_controller.player!=null:audio_controller.set_map(world.map_id)
 	if map_select.item_count==0 or map_select.get_item_id(map_select.selected)!=world.map_id:
 		_sync_map_selection()
 	stats.text = "LEVEL %d     HP %d / %d     XP %d / %d\nMANA %d / %d     GOLD %d     POINTS %d" % [world.level, world.hp, world.max_hp(), world.xp, world.level * 40,world.mana,world.max_mana(),world.gold,world.bonus_points]
@@ -535,25 +543,7 @@ func _market_rows() -> void:
 		_set_item_icon(button,item["key"])
 
 func toggle_music() -> void:
-	music_enabled = not music_enabled
-	if music == null:
-		var path: String="res://art/music.oggdata"
-		if not FileAccess.file_exists(path):
-			music_enabled=false
-			return
-		var stream := AudioStreamOggVorbis.load_from_buffer(FileAccess.get_file_as_bytes(path))
-		if stream==null:
-			music_enabled=false
-			return
-		stream.loop=true
-		music=AudioStreamPlayer.new()
-		music.stream=stream
-		music.volume_db=-20
-		add_child(music)
-	if music_enabled:
-		music.play()
-	else:
-		music.stop()
+	audio_controller.toggle()
 
 func _set_item_icon(button: Button,key: String) -> void:
 	var sprite: String=art.get("item_icons",{}).get(key,"")

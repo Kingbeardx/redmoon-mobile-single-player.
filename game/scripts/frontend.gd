@@ -49,6 +49,7 @@ func show_title() -> void:
 	var resume:=button("CONTINUE · %s · %s" % [scene.world.player_name,scene.world.map_name()],close_for_play)
 	resume.disabled=not has_save
 	button("NEW CHARACTER",show_creation)
+	button("MUSIC: "+("ON" if scene.music_enabled else "OFF"),func():scene.toggle_music();show_title())
 	label("One saved character · progress saves automatically",26)
 
 func close_for_play() -> void:

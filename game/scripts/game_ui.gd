@@ -178,8 +178,7 @@ func show_journal() -> void:
 	button("POWER STRIKE · 20 MANA",func():close();scene.world.cast_skill(),list)
 	button("USE NEARBY EXIT",func():close();scene.world.use_exit();scene.textures.clear();scene._sync_map_selection(),list)
 	button("CLAIM BOUNTY · 10 DEFEATS",func():scene.world.claim_bounty();show_journal(),list)
-	button("MUSIC: "+("ON" if scene.music_enabled else "OFF"),func():scene.toggle_music();show_journal(),list)
-	button("SOUND: "+("ON" if scene.sounds_enabled else "OFF"),func():scene.sounds_enabled=not scene.sounds_enabled;show_journal(),list)
+	button("MUSIC & SOUND",show_audio,list)
 	button("RUN: "+("ON" if scene.world.running else "OFF"),func():scene.world.running=not scene.world.running;show_journal(),list)
 
 func talk_nearby() -> void:
@@ -227,3 +226,22 @@ func actor_texture(appearance: int) -> Texture2D:
 	var image:=Image.new()
 	if image.load_png_from_buffer(FileAccess.get_file_as_bytes("res://art/"+str(box[4])+".pngdata"))!=OK:return null
 	return ImageTexture.create_from_image(image.get_region(image.get_used_rect()))
+
+
+func show_audio() -> void:
+	open_page("MUSIC & SOUND","audio")
+	var audio=scene.audio_controller
+	label("%s · %d / %d" % [audio.title(),audio.index+1,audio.tracks.size()],content,32)
+	button("MUSIC: "+("ON" if scene.music_enabled else "OFF"),func():scene.toggle_music();show_audio(),content)
+	var volume_label:=label("MUSIC VOLUME: %d%%" % int(audio.volume),content,30)
+	var row:=HBoxContainer.new();row.add_theme_constant_override("separation",16);content.add_child(row)
+	button("−",func():audio.set_volume(audio.volume-10);show_audio(),row).custom_minimum_size.x=90
+	var slider:=HSlider.new();slider.min_value=0;slider.max_value=100;slider.step=5;slider.value=audio.volume
+	slider.custom_minimum_size=Vector2(600,64);slider.size_flags_horizontal=Control.SIZE_EXPAND_FILL;row.add_child(slider)
+	slider.value_changed.connect(func(value: float):audio.set_volume(value);volume_label.text="MUSIC VOLUME: %d%%" % int(value))
+	button("+",func():audio.set_volume(audio.volume+10);show_audio(),row).custom_minimum_size.x=90
+	var navigation:=HBoxContainer.new();navigation.add_theme_constant_override("separation",16);content.add_child(navigation)
+	button("PREVIOUS TRACK",func():audio.next_track(-1);show_audio(),navigation)
+	button("NEXT TRACK",func():audio.next_track(1);show_audio(),navigation)
+	button("SOUND EFFECTS: "+("ON" if scene.sounds_enabled else "OFF"),func():scene.sounds_enabled=not scene.sounds_enabled;audio.save_settings();show_audio(),content)
+	if audio.enabled and not audio.player.playing:label(audio.status,content,24)

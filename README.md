@@ -4,7 +4,7 @@ Android game rebuilt from the supplied server data and the RMA 7.0 client.
 
 ## Play
 
-Install `build/Redmoon-Mobile-v0.7.1.apk` on ARM64 Android 7.0 or newer.
+Install `build/Redmoon-Mobile-v0.8.apk` on ARM64 Android 7.0 or newer.
 Use the movement pad and ATTACK/HEAL buttons. BAG opens an item grid with separate CHARACTER and JOURNEY tabs. Tap an NPC
 to open their dialogue; distant NPCs can be approached automatically.
 Gold NPC markers identify interaction locations. Use the upper-right TRAVEL menu for connected locations and the beginner town guide. Progress saves locally, automatically and with SAVE. No server/login needed.
@@ -104,7 +104,7 @@ python3 tools/pack_art.py --archive /path/outside/game/unused-art
 ```
 
 Music rendering requires Linux FluidSynth, a GM soundfont and ffmpeg. The generated
-art/audio remains outside Git. Version 0.7 is Android debug-signed with the same
+art/audio remains outside Git. Version 0.8 is Android debug-signed with the same
 package and development key as the earlier build so an in-place upgrade should
 retain saves. No physical Android/iOS device testing has been performed.
 
@@ -217,3 +217,38 @@ perspective. Before training she explains BEGIN TRAINING; after training she
 offers COMPLETE TRAINING. Progress guidance reports Backyard defeats, and
 completed characters receive exploration guidance. HUD quest reminders remain
 separate. Older saves can use her healing service without restarting progress.
+
+## Version 0.8 — original client music library
+
+Music starts automatically, with 48 MIDI compositions from the existing RMA
+client rendered to offline Ogg audio. Rendering uses replacement General MIDI
+instruments, normalizes loudness, and preserves the complete compositions rather
+than the previous five-minute limit. The old player defaulted off, played only
+one quiet track and reduced it by another 20 dB. Music volume now defaults to
+70%, with true mute, persistent preferences and previous/next controls at
+BAG → JOURNEY → MUSIC & SOUND. A title-screen button also toggles music.
+Playback continues through menus and recovers after application pause/resume.
+
+The Blood Sun installer was inspected and extracted as data without execution.
+Its custom item/skill/stat/quest tables and recordings are not imported. Five
+conservative music-theme matches contribute 20 map assignments, gated on an
+identical MIDI in both clients, strong melody/timing similarity, a clear margin
+over the next match and matching map IDs/dimensions. This is compatibility
+evidence for community-client themes, not authentication of an official JCE
+music assignment. Unmatched zones use the existing client soundtrack playlist.
+Two MIDI files changed in Blood Sun are excluded from matching; the game keeps
+the RMA versions. No Blood Sun gameplay rules or executable code is bundled.
+
+Regenerate the soundtrack from original client inputs:
+
+```
+python3 tools/match_music.py /path/to/Redmoon /path/to/extracted/BloodSun --output analysis/music-matches.json
+python3 tools/music_library.py /path/to/Redmoon --blood-sun /path/to/extracted/BloodSun --matches analysis/music-matches.json
+```
+
+Omit the Blood Sun options to render only the existing client soundtrack.
+Conversions cache MIDI and soundfont hashes. Linux FluidSynth, a GM soundfont,
+ffmpeg and the analysis requirements are needed. Original input resources and
+converted audio remain outside Git. `music_playback.gd` checks PCM at the actual
+engine mixer, mute/unmute, persistence, missing-file fallback and zone selection.
+Desktop mixer validation is not a physical Android speaker test.
