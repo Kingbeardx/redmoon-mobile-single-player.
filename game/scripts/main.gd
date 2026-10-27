@@ -22,6 +22,7 @@ var music_enabled: bool = false
 var inventory_panel: PanelContainer
 var inventory_list: VBoxContainer
 
+var frontend = preload("res://scripts/frontend.gd").new()
 var world = WorldScript.new()
 var joystick: Control
 var root_ui: Control
@@ -53,10 +54,9 @@ func _ready() -> void:
 		client_maps = loaded_maps
 	_build_inventory()
 	if ready_world:
-		world.load_game()
-		for entry in world.catalog:
-			map_select.add_item("Map %05d  ·  %d × %d" % [int(entry["id"]), int(entry["width"]), int(entry["height"])], int(entry["id"]))
+		var existing: bool=world.load_game()
 		_sync_map_selection()
+		frontend.setup(self,existing)
 	else:
 		status.text = world.load_error
 		attack_button.disabled = true
@@ -155,8 +155,12 @@ func _build_ui() -> void:
 	save_button.pressed.connect(_save)
 	var reset := _button("RESET", INK)
 	reset.name = "Reset"
+	reset.text="MENU"
 	reset.add_theme_font_size_override("font_size", 13)
-	reset.pressed.connect(func(): reset_dialog.popup_centered())
+	reset.pressed.connect(func():
+		_save()
+		frontend.has_save=true
+		frontend.show_title())
 	reset_dialog = ConfirmationDialog.new()
 	reset_dialog.title = "Reset offline prototype progress?"
 	reset_dialog.dialog_text = "This clears this device's prototype save and restarts the current map."
@@ -198,7 +202,7 @@ func _layout() -> void:
 func _process(delta: float) -> void:
 	if not ready_world:
 		return
-	if reset_dialog.visible or (inventory_panel != null and inventory_panel.visible):
+	if (frontend.panel!=null and frontend.panel.visible) or reset_dialog.visible or (inventory_panel != null and inventory_panel.visible):
 		return
 	var direction: Vector2 = joystick.direction
 	if not get_viewport().gui_get_focus_owner():
@@ -219,7 +223,7 @@ func _process(delta: float) -> void:
 func _input(event: InputEvent) -> void:
 	# Buttons rely on mouse emulation, which follows only one finger. Handle
 	# combat touches directly so a second finger works while the joystick is held.
-	if not ready_world or reset_dialog.visible:
+	if not ready_world or reset_dialog.visible or inventory_panel.visible or (frontend.panel!=null and frontend.panel.visible):
 		return
 	if event is InputEventScreenTouch and event.pressed:
 		if attack_button.get_global_rect().has_point(event.position):
@@ -230,7 +234,7 @@ func _input(event: InputEvent) -> void:
 			get_viewport().set_input_as_handled()
 
 func _unhandled_key_input(event: InputEvent) -> void:
-	if not ready_world or not event is InputEventKey or not event.pressed or event.echo:
+	if inventory_panel.visible or (frontend.panel!=null and frontend.panel.visible) or not ready_world or not event is InputEventKey or not event.pressed or event.echo:
 		return
 	if event.physical_keycode == KEY_SPACE:
 		_attack()
@@ -240,23 +244,25 @@ func _unhandled_key_input(event: InputEvent) -> void:
 		_save()
 
 func _notification(what: int) -> void:
-	if ready_world and (what == NOTIFICATION_APPLICATION_PAUSED or what == NOTIFICATION_WM_CLOSE_REQUEST or what == NOTIFICATION_APPLICATION_FOCUS_OUT):
+	if ready_world and (frontend.panel==null or not frontend.panel.visible) and (what == NOTIFICATION_APPLICATION_PAUSED or what == NOTIFICATION_WM_CLOSE_REQUEST or what == NOTIFICATION_APPLICATION_FOCUS_OUT):
 		world.save_game()
 
 func _change_map(index: int) -> void:
-	if world.enter_map(map_select.get_item_id(index)):
+	if world.travel_to(map_select.get_item_id(index)):
 		textures.clear()
 		world.save_game()
+		_sync_map_selection()
 		_update_ui()
 	else:
 		world.message = "This recovered map could not be loaded."
 		_sync_map_selection()
 
 func _sync_map_selection() -> void:
-	for index in range(map_select.item_count):
-		if map_select.get_item_id(index) == world.map_id:
-			map_select.select(index)
-			break
+	map_select.clear()
+	map_select.add_item("TRAVEL · "+world.map_name(),world.map_id)
+	for id in world.travel_options():
+		if id!=world.map_id: map_select.add_item(world.map_name(id),id)
+	map_select.select(0)
 
 func _attack() -> void:
 	var prior: int = world.defeated
@@ -272,16 +278,21 @@ func _heal() -> void:
 func _save() -> void:
 	if world.save_game() != OK:
 		world.message = "Could not save progress on this device."
+	else:
+		world.message = "Progress saved on this device."
 	_update_ui()
 
 func _update_ui() -> void:
 	if not ready_world:
 		return
+	if map_select.item_count==0 or map_select.get_item_id(map_select.selected)!=world.map_id:
+		_sync_map_selection()
 	stats.text = "LV %d     HP %d / %d     XP %d / %d     MP %d / %d     GOLD %d" % [world.level, world.hp, world.max_hp(), world.xp, world.level * 40,world.mana,world.max_mana(),world.gold]
 	hp_bar.max_value=world.max_hp()
 	hp_bar.value = world.hp
-	location_label.text = "ZONE %05d     %d × %d     X %d   Y %d" % [world.map_id, world.width, world.height, int(world.player.x), int(world.player.y)]
+	location_label.text = "%s · %s · X %d Y %d" % [world.player_name,world.map_name(),int(world.player.x),int(world.player.y)]
 	status.text = world.message
+	help_label.text=world.objective() if world.adventure_started else "MOVE WASD/arrows · ATTACK Space · HEAL E"
 	heal_button.text = "HEAL × %d\nE" % world.potions
 	attack_button.modulate = Color(1, 1, 1, 0.7) if world.attack_cooldown > 0.0 else Color.WHITE
 
@@ -328,7 +339,7 @@ func _draw() -> void:
 	for npc in world.content.get("npcs", []):
 		if int(npc.get("map_id", -1)) == world.map_id:
 			var b: Dictionary = npc["bounds"]
-			entities.append({"position": Vector2((float(b["left"])+float(b["right"]))*0.5, (float(b["top"])+float(b["bottom"]))*0.5), "player": false, "enemy": {"npc":true,"monster_id":0,"appearance":int(npc["image_id"])}})
+			entities.append({"position": Vector2((float(b["left"])+float(b["right"]))*0.5, (float(b["top"])+float(b["bottom"]))*0.5), "player": false, "enemy": {"npc":true,"npc_name":str(npc["name"]).trim_prefix("+"),"monster_id":0,"appearance":int(npc["image_id"])}})
 	for exit in world.map_exit_rectangles():
 		entities.append({"position":Vector2((float(exit["left"])+float(exit["right"]))/96.0,(float(exit["top"])+float(exit["bottom"]))/48.0),"player":false,"exit":true})
 	entities.append({"position": world.player, "player": true})
@@ -352,7 +363,7 @@ func _draw() -> void:
 
 func _draw_actor(point: Vector2, is_player: bool, enemy: Dictionary) -> void:
 	if enemy.get("npc", false):
-		draw_string(ThemeDB.fallback_font, point + Vector2(-15,-65), "NPC", HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color.GOLD)
+		draw_string(ThemeDB.fallback_font, point + Vector2(-35,-65), str(enemy.get("npc_name","NPC")), HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color.GOLD)
 	var appearance: int = world.character_id if is_player else int(enemy.get("appearance",world.appearance(int(enemy.get("monster_id", 0)))))
 	var sequences: Array = art.get("actors", {}).get(str(appearance), [])
 	if not sequences.is_empty():
@@ -462,6 +473,14 @@ func _show_inventory() -> void:
 		child.queue_free()
 	inventory_panel.show()
 	_row("CLOSE · resume adventure", func(): inventory_panel.hide())
+	_paragraph(world.objective())
+	if world.adventure_started:
+		_row("Town guide / travel",_travel_rows)
+		if world.map_id==9:
+			_row("Speak with Doctor / recover HP and mana",_talk_rows)
+		if world.map_id==4:
+			_row("Bank: %d gold · Deposit carried gold" % world.bank_gold,func():world.deposit_gold();_show_inventory())
+			_row("Withdraw bank gold",func():world.withdraw_gold();_show_inventory())
 	_row("Gold %d | Weapon +%d | Defeated %d | Offline bounty: defeat 10 creatures" % [world.gold, world.weapon_bonus, world.defeated], func(): pass)
 	_row("Available stat points: %d" % world.bonus_points,func():pass)
 	for attribute in ["strength","spirit","dexterity","power"]:
@@ -474,14 +493,14 @@ func _show_inventory() -> void:
 	_row("Sound: %s" % ("ON" if sounds_enabled else "OFF"), func(): sounds_enabled = not sounds_enabled; _show_inventory())
 	_row("Run: %s" % ("ON" if world.running else "OFF"), func(): world.running = not world.running; _show_inventory())
 	_row("Zone market · recovered base prices", _market_rows)
-	_row("Interact with nearby NPC / shop", func(): world.interact(); _shop_rows())
+	_row("Interact with nearby NPC / shop", _talk_rows)
 	for key in world.inventory:
 		var item_key: String = str(key)
 		if int(world.inventory[item_key])<=0:
 			continue
 		var button: Button = _row("%s × %d · equip/use\n%s" % [world.item_name(item_key), world.inventory[item_key],world.item_details(item_key)], func(): world.use_item(item_key); _show_inventory())
 		_set_item_icon(button,item_key)
-	_row("Hero: %s · cycle original classes" % world.HERO_NAMES[world.character_id], func(): world.character_id = (world.character_id+1) % 9; world.refresh_equipment(); world.save_game(); _show_inventory())
+	_row("%s · %s" % [world.player_name,world.HERO_NAMES[world.character_id]], func():pass)
 	_row(world.message, func(): pass)
 
 func _shop_rows() -> void:
@@ -556,3 +575,39 @@ func _set_item_icon(button: Button,key: String) -> void:
 		button.icon=ImageTexture.create_from_image(image)
 		button.expand_icon=true
 		button.add_theme_constant_override("icon_max_width",40)
+
+
+func _travel_rows() -> void:
+	for child in inventory_list.get_children():
+		inventory_list.remove_child(child);child.queue_free()
+	_row("BACK · "+world.map_name(),_show_inventory)
+	_paragraph(world.objective())
+	_row("Town guide offers transport between beginner locations.",func():pass)
+	for id in world.travel_options():
+		if id==world.map_id: continue
+		var destination: int=id
+		_row("Travel to "+world.map_name(id),func():
+			if world.travel_to(destination):
+				textures.clear();_sync_map_selection();inventory_panel.hide();_update_ui())
+
+
+func _talk_rows() -> void:
+	world.interact()
+	for child in inventory_list.get_children():
+		inventory_list.remove_child(child);child.queue_free()
+	_row("BACK · Inventory",_show_inventory)
+	_paragraph(world.message)
+	_paragraph(world.objective())
+	if world.shop_available:
+		_row("Browse shop stock",_market_rows)
+		_shop_rows()
+	_row("CLOSE · Resume adventure",func():inventory_panel.hide();_update_ui())
+
+
+func _paragraph(text: String) -> void:
+	var label:=Label.new()
+	label.text=text
+	label.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART
+	label.custom_minimum_size=Vector2(760,50)
+	label.add_theme_font_size_override("font_size",18)
+	inventory_list.add_child(label)

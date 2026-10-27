@@ -21,6 +21,7 @@ func run() -> void:
 	var scene = load("res://main.tscn").instantiate()
 	root.add_child(scene)
 	await process_frame
+	scene.frontend.close_for_play()
 	scene.set_process(false)
 	var pad: Vector2 = scene.joystick.global_position + scene.joystick.size * 0.5 + Vector2(40, 0)
 	touch(0, pad, true)

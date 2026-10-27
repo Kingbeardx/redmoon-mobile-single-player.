@@ -8,10 +8,13 @@ OUTPUT = ROOT / 'build/redmoon-mobile-source.zip'
 INCLUDE_DIRS = ('tools', 'tests', 'docs', 'data', 'game', 'references')
 EVIDENCE = ('archive-manifest.json', 'pe-report.json', 'coff-symbols.json',
             'svMapServer-selected.asm', 'content-comparison.json',
-            'nested-map-manifest.json', 'end-to-end.png', 'v04-python-tests.log',
-            'v04-game-tests.log', 'v04-adventure.log', 'v04-input.log',
-            'v04-features.log', 'v04-recovery.log', 'v04-end-to-end.log',
-            'v04-rules.log', 'v04-items.log', 'v04-build.json', 'v04-packing.log')
+            'nested-map-manifest.json', 'v05-creation.png', 'v05-title.png',
+            'v05-smoke.log', 'v05-adventure.log', 'v05-input_smoke.log',
+            'v05-upstream_features.log', 'v05-recovery_and_market.log',
+            'v05-recovered_items.log', 'v05-new_adventure.log',
+            'v05-rendered-creation_ui.log', 'v05-rendered-end_to_end.log',
+            'v05-python.log', 'v05-rules.log', 'v05-build.json',
+            'new-character.asm', 'default-position.asm')
 
 
 def main():

@@ -9,6 +9,14 @@ const BASE_POWER: int = 90
 const PLAYER_HP: int = 50 + (BASE_POWER / 15) * (BASE_POWER / 10)
 const MAX_ENEMIES: int = 18
 
+var player_name: String = "Traveler"
+var journey: Dictionary = {}
+var adventure_started: bool = false
+var tutorial_stage: int = 0
+var tutorial_kills: int = 0
+var visited: Array = []
+var bank_gold: int = 0
+var arrival_grace: float = 0.0
 var gold: int = 0
 var inventory: Dictionary = {}
 var armor_bonus: int = 0
@@ -65,6 +73,9 @@ func read_json(path: String) -> Variant:
 
 func initialize(root: String = "res://data") -> bool:
 	data_root = root
+	var journey_data = read_json(data_root+"/journey.json")
+	if journey_data is Dictionary:
+		journey = journey_data
 	var portal_data = read_json(data_root + "/client-events.json")
 	if portal_data is Dictionary:
 		exits = portal_data
@@ -143,7 +154,10 @@ func enter_map(id: int, keep_current: bool = true) -> bool:
 		spawn_enemies()
 	attack_cooldown = 0.0
 	attack_flash = 0.0
-	message = "Map %05d · recovered geometry / provisional collision" % id
+	if adventure_started:
+		if not visited.has(id): visited.append(id)
+		if tutorial_stage==1 and id==1: tutorial_stage=2
+	message = map_name(id)
 	return true
 
 func is_open(cell: Vector2i) -> bool:
@@ -186,6 +200,8 @@ func spawn_enemies() -> void:
 	for record in records:
 		if int(record.get("map_id", -1)) == map_id and int(record.get("quantity", 0)) > 0:
 			candidates.append(record)
+	if adventure_started:
+		candidates.sort_custom(func(a: Dictionary,b: Dictionary) -> bool: return spawn_distance(a)<spawn_distance(b))
 	# A bounded sample, not original MMO population. Every point stays inside its
 	# recovered spawn rectangle, with passability checks against the decoded map.
 	for i in range(MAX_ENEMIES):
@@ -217,6 +233,7 @@ func tick(delta: float, direction: Vector2) -> void:
 		return
 	var dt: float = clampf(delta, 0.0, 0.1)
 	elapsed += dt
+	arrival_grace=maxf(0,arrival_grace-dt)
 	motion = direction
 	if direction.length_squared() > 0.001:
 		facing = facing_for(direction)
@@ -254,10 +271,16 @@ func tick(delta: float, direction: Vector2) -> void:
 			enemy["moving"] = true
 			enemy["x"] = position.x
 			enemy["y"] = position.y
-		elif distance <= 1.6 and float(enemy["cooldown"]) <= 0.0 and clear_sight(position,player):
+		elif distance <= 1.6 and float(enemy["cooldown"]) <= 0.0 and clear_sight(position,player) and arrival_grace<=0:
 			hp = maxi(0, hp - maxi(1,4 - armor_bonus))
 			enemy["cooldown"] = 1.4
-	if hp <= 0:
+	if hp <= 0 and adventure_started:
+		enter_map(9)
+		player=find_start([9,12])
+		hp=max_hp()
+		mana=max_mana()
+		message="You recovered at Street 1 Hospital. Your belongings are safe."
+	elif hp <= 0:
 		hp = max_hp()
 		player = find_start(current_map.get("start", [width / 2, height / 2]))
 		message = "Recovered at the map start. Your progress is kept."
@@ -298,6 +321,9 @@ func attack() -> bool:
 		target["alive"] = false
 		target["respawn_timer"] = maxf(1,float(target.get("respawn_seconds",60)))
 		defeated += 1
+		if adventure_started and tutorial_stage==2 and map_id==0:
+			tutorial_kills+=1
+			if tutorial_kills>=3: tutorial_stage=3
 		gold += 5
 		for spawn in content.get("spawns", []):
 			if int(spawn.get("monster_id",0)) == int(target["monster_id"]) and int(spawn.get("map_id",-1)) == map_id:
@@ -352,7 +378,7 @@ func restore_map_state(state: Dictionary) -> void:
 
 func save_game(path: String = "user://progress.json") -> Error:
 	remember_map()
-	var record: Dictionary = {"version": SAVE_VERSION, "map_id": map_id, "hp": hp, "xp": xp, "level": level, "potions": potions, "defeated": defeated, "map_states": map_states, "stats":stats,"bonus_points":bonus_points,"equipment":equipment,"purchases":purchases,"facing":facing,"armor_bonus":armor_bonus,"gold":gold,"inventory":inventory,"weapon_bonus":weapon_bonus,"character_id":character_id,"mana":mana,"bounty_claimed":bounty_claimed}
+	var record: Dictionary = {"player_name":player_name,"adventure_started":adventure_started,"tutorial_stage":tutorial_stage,"tutorial_kills":tutorial_kills,"visited":visited,"bank_gold":bank_gold,"version": SAVE_VERSION, "map_id": map_id, "hp": hp, "xp": xp, "level": level, "potions": potions, "defeated": defeated, "map_states": map_states, "stats":stats,"bonus_points":bonus_points,"equipment":equipment,"purchases":purchases,"facing":facing,"armor_bonus":armor_bonus,"gold":gold,"inventory":inventory,"weapon_bonus":weapon_bonus,"character_id":character_id,"mana":mana,"bounty_claimed":bounty_claimed}
 	var temporary: String = path + ".tmp"
 	var file := FileAccess.open(temporary, FileAccess.WRITE)
 	if file == null:
@@ -363,8 +389,6 @@ func save_game(path: String = "user://progress.json") -> Error:
 	if FileAccess.file_exists(path) and valid_save(read_json(path)):
 		DirAccess.copy_absolute(path,path+".bak")
 	var result: Error = DirAccess.rename_absolute(temporary, path)
-	if result == OK:
-		message = "Progress saved on this device."
 	return result
 
 func load_game(path: String = "user://progress.json") -> bool:
@@ -373,6 +397,13 @@ func load_game(path: String = "user://progress.json") -> bool:
 		saved = read_json(path+".bak")
 		if not valid_save(saved):
 			return false
+	player_name=str(saved.get("player_name","Traveler"))
+	adventure_started=bool(saved.get("adventure_started",false))
+	tutorial_stage=clampi(int(saved.get("tutorial_stage",0)),0,4)
+	tutorial_kills=clampi(int(saved.get("tutorial_kills",0)),0,3)
+	visited=[]
+	for id in saved.get("visited",[]): visited.append(int(id))
+	bank_gold=clampi(int(saved.get("bank_gold",0)),0,99999999)
 	var prior_states: Dictionary = map_states
 	map_states = saved["map_states"]
 	if not enter_map(int(saved.get("map_id", -1)), false):
@@ -417,7 +448,7 @@ func valid_save(saved: Variant) -> bool:
 	for key in ["map_id", "hp", "xp", "level", "potions", "defeated"]:
 		if not valid_number(saved.get(key)):
 			return false
-	for key in ["gold","armor_bonus","weapon_bonus","character_id","mana","facing","bonus_points"]:
+	for key in ["tutorial_stage","tutorial_kills","bank_gold","gold","armor_bonus","weapon_bonus","character_id","mana","facing","bonus_points"]:
 		if saved.has(key) and not valid_number(saved[key]):
 			return false
 	for key in ["inventory","purchases"]:
@@ -439,6 +470,12 @@ func valid_save(saved: Variant) -> bool:
 	for key in gear:
 		if not gear[key] is String:
 			return false
+	if saved.has("player_name") and (not saved["player_name"] is String or saved["player_name"].length()>24): return false
+	if saved.has("adventure_started") and not saved["adventure_started"] is bool: return false
+	var seen: Variant=saved.get("visited",[])
+	if not seen is Array or seen.size()>catalog.size(): return false
+	for id in seen:
+		if not valid_number(id): return false
 	var states: Variant = saved.get("map_states")
 	if not states is Dictionary or states.size() > catalog.size():
 		return false
@@ -462,9 +499,15 @@ func valid_save(saved: Variant) -> bool:
 	return true
 
 func reset_progress(path: String = "user://progress.json") -> void:
-	if FileAccess.file_exists(path):
-		DirAccess.remove_absolute(path)
+	for suffix in ["", ".bak", ".tmp"]:
+		if FileAccess.file_exists(path+suffix): DirAccess.remove_absolute(path+suffix)
 	map_states = {}
+	adventure_started=false
+	player_name="Traveler"
+	tutorial_stage=0
+	tutorial_kills=0
+	visited=[]
+	bank_gold=0
 	gold = 0
 	inventory = {}
 	purchases = {}
@@ -579,7 +622,10 @@ func interact() -> void:
 		var b: Dictionary = npc["bounds"]
 		var pos := Vector2((float(b["left"])+float(b["right"]))*0.5, (float(b["top"])+float(b["bottom"]))*0.5)
 		if pos.distance_to(player) < 8:
-			message = str(npc["name"]) + ": Welcome, traveler."
+			message = str(npc["name"]).trim_prefix("+") + ": Welcome, "+player_name+"."
+			if adventure_started and map_id==9:
+				doctor_service()
+				return
 			for link in content.get("map_shops", []):
 				if int(link.get("map_id",-1)) == map_id:
 					shop_available = true
@@ -712,3 +758,106 @@ func allocate_stat(attribute: String) -> bool:
 	bonus_points-=1
 	save_game()
 	return true
+
+
+func map_name(id: int = -1) -> String:
+	var key: int=map_id if id<0 else id
+	return str(journey.get("map_names",{}).get(str(key),"Zone %05d" % key))
+
+func create_character(chosen_name: String, hero: int, path: String="user://progress.json") -> bool:
+	var clean: String=chosen_name.strip_edges()
+	if clean.length()<2 or clean.length()>14 or hero<0 or hero>=HERO_NAMES.size():
+		message="Choose a name of 2–14 characters."
+		return false
+	for index in range(clean.length()):
+		if clean.unicode_at(index)<32: return false
+	# Preserve the previous save/backup until the new adventure is saved atomically.
+	map_states={};inventory={"4:1":5,"5:93":1,"5:94":1,"5:95":1};equipment={};purchases={}
+	stats={"strength":10,"spirit":10,"dexterity":10,"power":10}
+	bonus_points=0;level=1;xp=0;gold=0;bank_gold=0;defeated=0;potions=5
+	weapon_bonus=0;armor_bonus=0;bounty_claimed=false;character_id=hero;player_name=clean
+	adventure_started=true;tutorial_stage=0;tutorial_kills=0;visited=[]
+	if not enter_map(9,false): return false
+	player=find_start([9,12]);hp=max_hp();mana=max_mana()
+	message="Welcome, "+player_name+". Speak with the Doctor to begin."
+	return save_game(path)==OK
+
+func objective() -> String:
+	if not adventure_started: return "Explore recovered maps. Start a new character from MENU for the guided adventure."
+	return ["Speak with the Doctor here at Street 1 Hospital.","Visit Street 1 using TRAVEL, then head to the Backyard.","Backyard training: defeat 3 creatures (%d/3)." % tutorial_kills,"Return to Street 1 Hospital and speak with the Doctor.","Training complete. Explore towns, improve equipment and follow recovered exits."][tutorial_stage]
+
+func doctor_service() -> void:
+	hp=max_hp();mana=max_mana()
+	if tutorial_stage==0:
+		tutorial_stage=1
+		inventory["2:1"]=int(inventory.get("2:1",0))+1
+		use_item("2:1")
+		var cheapest: String=""
+		var price: int=2147483647
+		for key in item_metadata:
+			var item: Dictionary=item_metadata[key]
+			if not str(key).begins_with("1:") or int(item.get("required_level",99))>1 or int(item.get("attack",0))<=0: continue
+			if (int(item.get("characters",0)) & (1<<character_id))==0: continue
+			var eligible: bool=true
+			for stat in stats:
+				if int(item.get("required_"+stat,0))>effective_stat(stat): eligible=false
+			if eligible and int(item.get("price",0))<price:
+				cheapest=key;price=int(item.get("price",0))
+		if not cheapest.is_empty():
+			inventory[cheapest]=int(inventory.get(cheapest,0))+1
+			use_item(cheapest)
+		gold+=50
+		message="Doctor: Take these supplies. Visit Street 1, then train in the Backyard."
+	elif tutorial_stage==3:
+		tutorial_stage=4;gold+=100;inventory["4:1"]=int(inventory.get("4:1",0))+3
+		message="Doctor: Training complete! Reward: 100 gold and 3 food. Explore the town shops."
+	else:
+		message="Doctor: Your health and mana are restored. "+objective()
+	save_game()
+
+func travel_options() -> Array:
+	var options: Array=[]
+	var links: Dictionary=journey.get("links",{}).get(str(map_id),{})
+	for key in links:
+		options.append(int(key))
+	# The beginner guide offers return trips between starter services.
+	if adventure_started:
+		for id in [0,1,4,5,9,10]:
+			if not options.has(id): options.append(id)
+	options.sort()
+	return options
+
+func travel_to(id: int) -> bool:
+	if not travel_options().has(id):
+		message="Reach this destination through a connected exit first."
+		return false
+	var first_visit: bool=not visited.has(id)
+	var target: Variant=journey.get("links",{}).get(str(map_id),{}).get(str(id))
+	if not enter_map(id): return false
+	if id in [4,5,9,10]:
+		player=find_start([9,12])
+	elif target is Array:
+		player=find_start(target)
+	elif id==1:
+		player=find_start([122,115])
+	if first_visit:
+		enemies=[]
+		spawn_enemies()
+	arrival_grace=5.0
+	message="Arrived at "+map_name()+". "+objective()
+	save_game()
+	return true
+
+func deposit_gold() -> bool:
+	if map_id!=4 or gold<=0: return false
+	bank_gold+=gold;gold=0;save_game();return true
+
+func withdraw_gold() -> bool:
+	if map_id!=4 or bank_gold<=0: return false
+	gold+=bank_gold;bank_gold=0;save_game();return true
+
+
+func spawn_distance(record: Dictionary) -> float:
+	var bounds: Dictionary=record.get("bounds",{})
+	var closest:=Vector2(clampf(player.x,float(bounds.get("left",0)),float(bounds.get("right",width-1))),clampf(player.y,float(bounds.get("top",0)),float(bounds.get("bottom",height-1))))
+	return closest.distance_squared_to(player)

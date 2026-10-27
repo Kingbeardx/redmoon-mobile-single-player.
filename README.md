@@ -4,11 +4,10 @@ Android game rebuilt from the supplied server data and the RMA 7.0 client.
 
 ## Play
 
-Install `build/Redmoon-Mobile-v0.4.apk` on ARM64 Android 7.0 or newer.
+Install `build/Redmoon-Mobile-v0.5.apk` on ARM64 Android 7.0 or newer.
 Use the movement pad and ATTACK/HEAL buttons. BAG / TALK opens inventory,
 equipment, the skill attack, a one-time offline bounty and nearby NPC shops.
-Gold NPC markers identify interaction locations. Select maps from the upper-right
-menu. Progress saves locally, automatically and with SAVE. No server/login needed.
+Gold NPC markers identify interaction locations. Use the upper-right TRAVEL menu for connected locations and the beginner town guide. Progress saves locally, automatically and with SAVE. No server/login needed.
 Desktop controls: WASD/arrows, Space to attack, E to heal.
 
 ## Current implementation
@@ -22,7 +21,7 @@ Desktop controls: WASD/arrows, Space to attack, E to heal.
   and armor bonuses, food, healing purchases, item sales, progression and rewards.
 - Source monster identities, spawn bounds and respawn intervals; bounded populations.
 - Local saves retain maps, player/enemy state, inventory, equipment, mana and rewards.
-- HP uses the statically recovered formula at the chosen starting Power of 90.
+- HP/MP use statically recovered formulas; new heroes start with recovered attributes of 10.
 
 ## Fidelity limits
 
@@ -105,7 +104,7 @@ python3 tools/pack_art.py --archive /path/outside/game/unused-art
 ```
 
 Music rendering requires Linux FluidSynth, a GM soundfont and ffmpeg. The generated
-art/audio remains outside Git. Version 0.4 is Android debug-signed with the same
+art/audio remains outside Git. Version 0.5 is Android debug-signed with the same
 package and development key as the earlier build so an in-place upgrade should
 retain saves. No physical Android/iOS device testing has been performed.
 
@@ -136,3 +135,32 @@ python3 tools/item_icons.py /path/to/Redmoon
 The separately checked RMA 6-to-7 update contains 13 files already identical to
 this client, so overlaying it adds no missing content. Later Korean packages in
 external research reports have not been acquired or validated here.
+
+## Version 0.5 — new-player adventure
+
+Start from the title screen, select NEW CHARACTER, enter a name and choose one
+of nine heroes. BEGIN ADVENTURE starts at Street 1 Hospital. Open BAG / TALK and
+speak with the Doctor for beginner equipment and guidance. Use TRAVEL to visit
+Street 1 and the Backyard; defeat three creatures and return to the Doctor.
+The Doctor restores health/mana. Visit the food and weapon shops for source-listed
+stock; Street 1 Bank stores gold. MENU returns to Continue/New Character. Creating
+a replacement character requires confirmation; there is one active character slot.
+
+The 3.x IP server's `ProcessNewCharacterID` at 0x404a10 initializes four
+attributes to 10 and supplies five category-4/index-1 food items plus Street 1/2/3
+map items. New characters now use those attributes/items. Normal creation stores
+a map sentinel of -1 with coordinates (122,115); that sentinel's complete
+resolution remains unverified. The safe hospital start, Doctor gifts, training
+quest/rewards, beginner transport, bank convenience actions and five-second
+arrival protection are reconstruction choices. They are not presented as the
+original introduction. English town names come from preserved `Web/maps.txt`.
+Existing saves retain their previous attributes; new starting values apply only
+to new characters. Starting heroes cannot be switched through the inventory.
+
+Regenerate destination data with `python3 tools/journey_data.py` after preparing
+the supplied server archives. The generated `journey.json` is packaged with the
+APK. `game/tests/new_adventure.gd` covers all nine starter classes, services,
+training rewards, banking and persistence. `creation_ui.gd` drives the creation,
+town travel, combat, Doctor return and food purchase through interface controls.
+Use an isolated temporary XDG_DATA_HOME for each test process so tests do not
+modify player saves. Rendered suites require an active display (Xvfb works).

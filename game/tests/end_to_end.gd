@@ -10,6 +10,7 @@ func run() -> void:
 	var scene = load("res://main.tscn").instantiate()
 	root.add_child(scene)
 	await process_frame
+	scene.frontend.close_for_play()
 	scene.set_process(false)
 	scene.toggle_music()
 	check(scene.music != null and scene.music.playing,"music toggle plays original client composition")
