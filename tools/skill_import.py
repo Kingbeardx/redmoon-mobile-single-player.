@@ -18,7 +18,12 @@ EXTRA_MODES = {9:'sleep',303:'sleep',86:'sleep',19:'freeze',84:'blind',
                66:'damage_blind',89:'damage_freeze',27:'leech',76:'leech',
                57:'disguise',87:'disguise',35:'fear_aura',
                5:'cleanse',73:'cleanse',16:'purify_guard',22:'purify_guard',
-               55:'status_guard',85:'status_guard',311:'status_guard',40:'decoy',43:'taunt'}
+               55:'status_guard',85:'status_guard',311:'status_guard',40:'decoy',43:'taunt',
+               34:'hide',48:'attack_speed',312:'attack_speed',65:'psychic_reflect'}
+RUNTIME_NOTES={34:'Avoids physical damage while active; psychic attacks still hurt. Cast again to end Hide.',
+               48:'Basic attacks recover 1.5× faster. Speed effects do not stack.',
+               312:'Basic attacks recover 2× faster in offline play. Speed effects do not stack.',
+               65:'Returns psychic HP damage to the attacking creature in offline play. Physical attacks are unaffected.'}
 MONSTER_MODES={0:'damage',1:'heal',2:'root',17:'blind',18:'physical_damage',
                19:'damage',22:'sleep',26:'freeze',38:'slow',70:'damage',
                71:'damage',72:'damage',73:'damage'}
@@ -86,14 +91,16 @@ def build(server, client):
                        'area':v['range_encoded']>=10000,'mode':mode,'weapon':weapon,
                        'leech_percent':30 if ident==27 else 50 if ident==76 else 0,
                        'duration_scale':.2 if ident in [22,55,85,40] else 1.0,
-                       'duration_spirit_divisor':10 if ident in [55,85] else 20,
+                       'duration_spirit_divisor':5 if ident==34 else 10 if ident in [55,85] else 20,
+                       'attack_speed':1.5 if ident==48 else 2.0 if ident==312 else 1.0,
+                       'runtime_note':RUNTIME_NOTES.get(ident,''),
                        'message_key':key,'client_differences':differing,
                        'status':'reconstructed' if mode!='pending' else 'reference_only'})
         if mode=='pending': issues.append(ident)
     return {'schema_version':1,'source_sha256':hashlib.sha256(server.read_bytes()).hexdigest(),
             'client_sha256':hashlib.sha256((client/'DATAs/Info/skill00.rmi').read_bytes()).hexdigest(),
             'requirements':'Original 3.8 server; English text and displayed hero IDs from Message.ctf',
-            'runtime_limit':'Damage, cooldown, targeting and status integration use the offline combat model. Honor cap quests, DP, multiplayer and advanced effects remain incomplete.',
+            'runtime_limit':'Damage, cooldown, targeting and status integration use the offline combat model. The first honor-cap chapter is playable; DP, multiplayer, later quests and advanced effects remain incomplete.',
             'skills':result,'monster_skills':monsters,
             'summary':{'player_skills':len(result),'reconstructed':len(result)-len(issues),'reference_only':len(issues)}}
 

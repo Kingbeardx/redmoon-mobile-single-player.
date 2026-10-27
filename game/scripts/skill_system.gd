@@ -11,7 +11,7 @@ var effects: Array=[]
 var ailments: Dictionary={}
 var control_grace: float=0
 const CONTROL_TYPES=["root","freeze","sleep"]
-const BUFF_MODES=["disguise","attack_up","haste","mana_shield","barrier","reload","range_up","fear_aura","status_guard","purify_guard","decoy","taunt"]
+const BUFF_MODES=["disguise","attack_up","haste","mana_shield","barrier","reload","range_up","fear_aura","status_guard","purify_guard","decoy","taunt","hide","attack_speed","psychic_reflect"]
 const RECOVERY: float=.8 # Offline input pacing, not an original server delay.
 
 func setup(owner_world,data: Variant) -> void:
@@ -72,6 +72,7 @@ func requirement(id: int,include_runtime: bool=true) -> String:
 func cost(id: int) -> int:
 	var row: Dictionary=entry(id)
 	if row.is_empty():return 0
+	if row["mode"]=="hide" and not active("hide").is_empty():return 0
 	# Cure / Heal convert one MP into two HP. Recover restores all missing HP.
 	if id in [1,2]:return mini(world.mana,(world.max_hp()-world.hp)/2)
 	var encoded: int=int(row["mana_encoded"])
@@ -125,6 +126,19 @@ func break_disguise() -> void:
 	for id in buffs.keys():
 		if buffs[id]["mode"]=="disguise":buffs.erase(id)
 
+func basic_attack_delay() -> float:
+	# Use the strongest rate rather than multiplying overlapping speed effects.
+	var rate: float=maxf(1,factor("reload"))
+	for id in buffs:
+		if buffs[id]["mode"]=="attack_speed":rate=maxf(rate,float(entry(int(id)).get("attack_speed",1)))
+	return .45/clampf(rate,1,4)
+
+func end_mode(mode: String) -> bool:
+	var removed: bool=false
+	for id in buffs.keys():
+		if buffs[id]["mode"]==mode:buffs.erase(id);removed=true
+	return removed
+
 func cast_slot(slot: int) -> bool:
 	ensure_slots()
 	return cast(int(slots[slot])) if slot>=0 and slot<3 else false
@@ -139,6 +153,9 @@ func cast(id: int) -> bool:
 		return world.cast_skill()
 	var row: Dictionary=entry(id);var mode: String=str(row["mode"]);var used: int=cost(id)
 	if not can_act() and mode not in ["cleanse","purify_guard"]:world.message="You cannot act while frozen or asleep.";return false
+	if mode=="hide" and not active("hide").is_empty():
+		# Ending a defensive stance must never trap a player with no MP.
+		end_mode("hide");world.attack_cooldown=.45;cooldowns[id]=RECOVERY;world.message="Hide ended.";return true
 	if mode=="cleanse" and ailments.is_empty():world.message="You have no harmful effects to cleanse.";return false
 	if mode=="decoy" and not active("decoy").is_empty():world.message="Scarecrow is still protecting you.";return false
 	if world.mana<used:world.message="Not enough mana for "+row["name"]+".";return false

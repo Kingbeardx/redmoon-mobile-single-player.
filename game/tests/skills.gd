@@ -67,6 +67,6 @@ func run() -> void:
 		if row["mode"]=="cleanse":w.skills.ailments={"root":3.0}
 		if row["weapon"]!="":w.equipment={"weapon":weapons[row["weapon"]]}
 		check(w.skills.cast(int(row["id"])),"supported original skill executes: "+row["name"]);count+=1
-	check(count==70,"all 70 admitted skills exercised")
+	check(count==74,"all 74 admitted skills exercised")
 	for suffix in ["", ".bak"]:DirAccess.remove_absolute(path+suffix)
 	print("SKILLS: %d checks, %d failures" % [checks,failures]);quit(1 if failures else 0)

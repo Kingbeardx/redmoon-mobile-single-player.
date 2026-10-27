@@ -344,3 +344,15 @@ boss damage keep the chapter playable offline. Fixed spawn quantities and
 separated NPC anchors fix the missing Spy / untappable Geographer problems.
 Regenerate with `python3 tools/story_import.py /path/to/Redmoon`.
 See [story evidence and limits](docs/story-reconstruction.md).
+
+## v0.14 combat stances
+
+Hide, Red Halo, MadSpin and Psychic Boost now have functional offline effects,
+raising supported player entries to 74/114. Original class/level/honor/cost and
+recovered duration paths are retained. Hide has a visible END HIDE touch action;
+reflection follows real post-shield HP loss; basic attack speed uses the strongest
+active rate. Stances save and expire correctly.
+
+See [combat stance evidence and limits](docs/combat-stances.md). This remains an
+offline reconstruction: full original damage/accuracy, DP, multiplayer and later
+story chapters remain incomplete.

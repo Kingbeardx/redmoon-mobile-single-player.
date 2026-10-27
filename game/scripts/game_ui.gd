@@ -351,6 +351,7 @@ func show_skills() -> void:
 			if system.assign(index,selected_skill):scene._save();show_skills(),binds)
 		bind.size_flags_horizontal=Control.SIZE_EXPAND_FILL;bind.disabled=reason!="Ready";skill_assign_buttons.append(bind)
 	label(str(row["description"]),details,26)
+	if not str(row.get("runtime_note","")).is_empty():label(str(row["runtime_note"]),details,25)
 	var encoded: int=int(row["mana_encoded"])
 	var mana_text: String="%d MP" % encoded if encoded<1000000000 else "%d%% of maximum MP" % mini(100,encoded-1000000000)
 	if selected_skill in [1,2]:mana_text="1 MP per 2 HP restored"
@@ -372,6 +373,7 @@ func show_effects() -> void:
 	effect_text=label("",body,30);refresh_effects()
 	label("Root stops movement. Freeze and sleep stop movement, attacks and most skills. Cleansing abilities and consumables remain usable. Damage wakes you from sleep. Blindness blocks basic attacks; slowing reduces movement speed.",body,26)
 	label("Cleansing skills remove harmful effects. Mental protection prevents new ones while it lasts. Control effects last up to 3 seconds, followed by a brief resistance window in this offline adventure.",body,26)
+	label("Hide avoids physical damage; psychic attacks still hurt. Red Halo returns psychic HP damage to its attacker. Attack-speed effects use the strongest active rate and do not stack.",body,26)
 	button("BACK TO SKILLS",show_skills,body)
 
 func refresh_effects() -> void:

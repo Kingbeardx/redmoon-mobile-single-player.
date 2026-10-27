@@ -162,3 +162,15 @@ Both encounters are survivable with the existing controls. Importer tests verify
 server/client event round trips, 43 Removed slots, original text, NPC role
 selection, target IDs and cap metadata. Earlier checks also pass. No physical
 Android or iOS testing has been performed.
+
+## v0.14 validation
+
+540 Godot checks passed across 24 scripts, including rendered touch input for all
+new stances, full source-quest UI traversal, music PCM capture, persistence and
+existing gameplay/UI regressions. 59 Python tests and four recovered-rule checks
+passed (63 combined). No physical Android device or iOS build was tested.
+
+New combat coverage includes physical versus psychic damage, zero-MP Hide ending,
+source timer paths, strongest-only speed stacking, shield spill, lethal reflection,
+ordinary defeat rewards and saved/expired stances. Static evidence is regenerated
+by `python3 tools/stance_evidence.py`.

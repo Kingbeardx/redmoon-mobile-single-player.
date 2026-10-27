@@ -10,7 +10,11 @@ CLIENT=Path('/workspace/scratch/client/Redmoon')
 class Skills(unittest.TestCase):
  @classmethod
  def setUpClass(cls):cls.catalog=build(SERVER,CLIENT);cls.rows={r['id']:r for r in cls.catalog['skills']}
- def test_count(self):self.assertEqual(self.catalog['summary'],{'player_skills':114,'reconstructed':70,'reference_only':44})
+ def test_count(self):self.assertEqual(self.catalog['summary'],{'player_skills':114,'reconstructed':74,'reference_only':40})
+ def test_combat_stances(self):
+  self.assertEqual(self.rows[34]['mode'],'hide');self.assertEqual(self.rows[34]['duration_spirit_divisor'],5)
+  self.assertEqual(self.rows[65]['mode'],'psychic_reflect');self.assertEqual(self.rows[48]['attack_speed'],1.5)
+  self.assertEqual(self.rows[312]['attack_speed'],2);self.assertIn('offline',self.rows[312]['runtime_note'])
  def test_server_unlocks_take_priority(self):
   self.assertEqual(self.rows[3]['level'],50);self.assertEqual(self.rows[3]['client_differences']['level']['client'],10)
  def test_names_match_icon_not_slot(self):self.assertEqual(self.rows[2]['name'],'Heal');self.assertEqual(self.rows[3]['name'],'Soul Sphere')

@@ -344,7 +344,7 @@ func attack() -> bool:
 	if skills.ailments.has("blind"):message="Your vision is obscured. Wait or use a cleansing skill.";return false
 	if attack_cooldown > 0.0 or map_id < 0:
 		return false
-	attack_cooldown = 0.45 / skills.factor("reload")
+	attack_cooldown = skills.basic_attack_delay()
 	attack_flash = 0.18
 	var target: Dictionary = {}
 	var best: float = weapon_range()
@@ -400,15 +400,23 @@ func damage_enemy(target: Dictionary,amount: int) -> void:
 
 	if int(target["hp"])<=0:story.on_defeat(int(target["monster_id"]))
 
-func receive_damage(amount: int,_attacker: Dictionary={},psychic: bool=false) -> void:
-	if amount<=0 or skills.absorb_decoy():return
+func receive_damage(amount: int,attacker: Dictionary={},psychic: bool=false) -> void:
+	if amount<=0 or hp<=0:return
+	if not psychic and not skills.active("hide").is_empty():
+		message="Hide avoided a physical attack.";return
+	if skills.absorb_decoy():return
 	if not psychic:amount=maxi(1,amount-armor_bonus)
 	amount=maxi(1,int(ceil(amount*skills.factor("barrier"))))
 	if not skills.active("mana_shield").is_empty():
 		var absorbed: int=mini(mana,amount);mana-=absorbed;amount-=absorbed
 	if amount>0 and skills.ailments.has("sleep"):
 		skills.ailments.erase("sleep");skills.control_grace=2.0
+	var lost: int=mini(hp,amount)
 	hp=maxi(0,hp-amount)
+	if psychic and lost>0 and not skills.active("psychic_reflect").is_empty() and enemies.has(attacker) and bool(attacker.get("alive",false)):
+		# Offline reflection uses actual HP loss, after shields, with no recursion.
+		damage_enemy(attacker,lost)
+		skills.effects.append({"x":attacker["x"],"y":attacker["y"],"mode":"buff","remaining":.65,"label":"REFLECT −%d" % lost})
 
 func heal() -> bool:
 	if potions <= 0 or hp >= max_hp():

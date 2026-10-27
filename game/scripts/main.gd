@@ -333,13 +333,14 @@ func _update_ui() -> void:
 	status.text=world.message
 	help_label.text=world.story.title() if world.story.active() else ["Meet the Doctor","Visit Street 1","Backyard · %d / 3" % world.tutorial_kills,"Return to Doctor","Explore Redmoon"][world.tutorial_stage] if world.adventure_started else "Explore Redmoon"
 	var cooldown: float=world.attack_cooldown/.45
-	attack_button.set_state("",cooldown)
+	attack_button.set_state("",world.attack_cooldown/world.skills.basic_attack_delay())
 	heal_button.disabled=world.potions<=0;heal_button.set_state(str(world.potions),0)
 	world.skills.ensure_slots()
 	var actions: Array=[skill_button]+extra_skill_buttons
 	for index in range(3):
 		var id: int=int(world.skills.slots[index]);var row: Dictionary=world.skills.entry(id);var button: Button=actions[index]
 		button.caption.text=str(row.get("name","SKILLS")).to_upper()
+		if row.get("mode","")=="hide" and not world.skills.active("hide").is_empty():button.caption.text="END HIDE"
 		button.picture.texture=game_ui.skill_texture(id)
 		button.tooltip_text=str(row.get("name","Choose a skill"))+" · Open BAG → SKILLS to assign"
 		button.disabled=id!=0 and (world.skills.requirement(id)!="Ready" or world.mana<world.skills.cost(id))
@@ -477,7 +478,9 @@ func _draw_actor(point: Vector2, is_player: bool, enemy: Dictionary) -> void:
 			frames = action_frames
 		var frame: int = int(world.elapsed / 0.06) % frames.size()
 		var key: String = frames[frame]
-		_draw_image(key, point)
+		var tint: Color=Color(0.7,0.75,0.9,.55) if is_player and not world.skills.active("hide").is_empty() else Color.WHITE
+		_draw_image(key, point,tint)
+		if is_player and not world.skills.active("psychic_reflect").is_empty():draw_arc(point+Vector2(0,-28),28,0,TAU,40,Color("dd5c66"),2,true)
 		if not is_player and not enemy.get("npc",false):
 			draw_rect(Rect2(point + Vector2(-18, -60), Vector2(36.0 * clampf(float(enemy.get("hp",36))/maxf(1,float(enemy.get("max_hp",36))),0,1), 3)), RED)
 		return
@@ -520,7 +523,7 @@ func _draw_minimap(viewport: Vector2) -> void:
 	for enemy in world.enemies:
 		if bool(enemy.get("alive",false)) and not world.story.target_name(int(enemy.get("monster_id",0))).is_empty():draw_circle(origin+Vector2(enemy["x"],enemy["y"])*scale_factor,4.5,Color.GOLD)
 
-func _draw_image(key: String, point: Vector2) -> bool:
+func _draw_image(key: String, point: Vector2,tint: Color=Color.WHITE) -> bool:
 	if not art.get("images", {}).has(key):
 		return false
 	var box: Array = art["images"][key]
@@ -531,7 +534,7 @@ func _draw_image(key: String, point: Vector2) -> bool:
 			return false
 		textures[payload] = ImageTexture.create_from_image(image)
 	image_last_used[payload]=draw_epoch
-	draw_texture(textures[payload], point + Vector2(box[0], box[1]))
+	draw_texture(textures[payload], point + Vector2(box[0], box[1]),tint)
 	return true
 
 func _draw_original_tile(x: int, y: int, point: Vector2) -> bool:

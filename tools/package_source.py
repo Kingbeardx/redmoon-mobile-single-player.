@@ -53,6 +53,16 @@ EVIDENCE += ('story-evidence.json', 'story-evidence.asm', 'v13-build.json',
              'story','story_ui')))
 
 
+EVIDENCE += ('v14-stance-evidence.json', 'v14-stance-evidence.asm', 'v14-build.json',
+             'v14-stances.png', 'v14-skill-import.json', 'v14-python.log', 'v14-rules.log',
+             *('v14-'+name+'.log' for name in ('smoke','adventure','input_smoke',
+             'upstream_features','recovery_and_market','recovered_items','new_adventure',
+             'doctor_dialogue','inventory_dialogue','creation_ui','accessibility',
+             'end_to_end','music_playback','v09_features','skills','skill_ui',
+             'advanced_skills','advanced_ui','status_combat','protection_ui',
+             'story','story_ui','combat_stances','stances_ui')))
+
+
 def main():
     OUTPUT.parent.mkdir(parents=True, exist_ok=True)
     files = [ROOT / 'README.md', ROOT / 'requirements-analysis.txt', ROOT / '.gitignore']
