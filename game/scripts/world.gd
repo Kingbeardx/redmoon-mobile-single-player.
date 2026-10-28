@@ -73,6 +73,7 @@ var attack_variant: int=0
 var elapsed: float = 0.0
 var message: String = "Explore a recovered map. Combat rules are provisional."
 var map_states: Dictionary = {}
+var ground_loot: Array=[]
 var data_root: String = "res://data"
 var load_error: String = ""
 
@@ -170,7 +171,7 @@ func enter_map(id: int, keep_current: bool = true) -> bool:
 			if not is_open(Vector2i(x,y)):
 				navigation.set_point_solid(Vector2i(x,y))
 	player = find_start(decoded.get("start", entry.get("start", [w / 2, h / 2])))
-	enemies = []
+	enemies = [];ground_loot=[]
 	selected_enemy={};action_remaining=0
 	if map_states.has(str(id)):
 		restore_map_state(map_states[str(id)])
@@ -293,6 +294,7 @@ func tick(delta: float, direction: Vector2) -> void:
 			run_distance+=player.distance_to(prior)
 			while run_distance>=1:
 				run_distance-=1;run_steps+=1;stamina=maxi(0,stamina-int(250.0/sqrt(maxi(1,movement_dexterity()))+.5));rest_elapsed=0
+	collect_loot()
 	for enemy in enemies:
 		if not bool(enemy.get("alive", false)):
 			continue
@@ -387,7 +389,9 @@ func attack() -> bool:
 	facing=facing_for(player.direction_to(Vector2(target["x"],target["y"])))
 	start_attack_animation(skills.basic_attack_delay())
 	skills.break_disguise()
-	damage_enemy(target,maxi(1,int((12+weapon_bonus+(level-1)*2)*skills.factor("attack_up")*skills.physical_factor())))
+	var damage: int=maxi(1,int((12+weapon_bonus+(level-1)*2)*skills.factor("attack_up")*skills.physical_factor()))
+	damage_enemy(target,damage)
+	skills.secondary_hits(target,damage)
 	return true
 
 func start_attack_animation(duration: float=.45) -> void:
@@ -396,7 +400,7 @@ func start_attack_animation(duration: float=.45) -> void:
 func damage_enemy(target: Dictionary,amount: int) -> void:
 	if not bool(target.get("alive",false)):return
 	if float(target.get("weaken_time",0))>0:amount=int(ceil(amount/0.75))
-	if float(target.get("expose_time",0))>0:amount=int(ceil(amount/.7))
+	if float(target.get("expose_time",0))>0 or float(target.get("curse_time",0))>0:amount=int(ceil(amount/.7))
 	target["sleep_time"]=0
 	target["hp"]=maxi(0,int(target["hp"])-amount)
 	if int(target["hp"]) <= 0:
@@ -415,7 +419,7 @@ func damage_enemy(target: Dictionary,amount: int) -> void:
 				var drops: Array = spawn.get("items", [])
 				if not drops.is_empty():
 					var key: String = "%d:%d" % [drops[0]["kind"], drops[0]["index"]]
-					inventory[key] = int(inventory.get(key,0)) + 1
+					drop_loot(key,Vector2(target["x"],target["y"]))
 				break
 		var previous_level: int=level
 		var gain: int=award_experience(int(monster_metadata.get(int(target["monster_id"]),{}).get("experience",0)))
@@ -427,10 +431,14 @@ func damage_enemy(target: Dictionary,amount: int) -> void:
 
 func receive_damage(amount: int,attacker: Dictionary={},psychic: bool=false,direct: bool=false) -> void:
 	if amount<=0 or hp<=0:return
-	if float(attacker.get("expose_time",0))>0:amount=maxi(1,int(amount*.7))
+	if float(attacker.get("expose_time",0))>0 or float(attacker.get("curse_time",0))>0:amount=maxi(1,int(amount*.7))
 	if not direct and not psychic and not skills.active("hide").is_empty():
 		message="Hide avoided a physical attack.";return
+	if not direct and not psychic and not skills.active("evasion").is_empty() and randf()<.2:
+		message="Evasion avoided the attack.";return
 	if skills.absorb_decoy():return
+	if not direct and not skills.active("holy_shield").is_empty():amount=maxi(1,amount*100/120)
+	if not direct and not skills.active("starlight").is_empty():amount=maxi(1,amount*80/100)
 	if not direct and not psychic:amount=maxi(1,amount-armor_bonus)
 	if not direct:amount=maxi(1,int(ceil(amount*skills.factor("barrier"))))
 	if not direct and not skills.active("mana_shield").is_empty():
@@ -439,7 +447,11 @@ func receive_damage(amount: int,attacker: Dictionary={},psychic: bool=false,dire
 		skills.ailments.erase("sleep");skills.control_grace=2.0
 	var lost: int=mini(hp,amount)
 	hp=maxi(0,hp-amount)
-	danger=mini(max_danger(),danger+amount)
+	danger=mini(max_danger(),danger+(amount*100/70 if not skills.active("purity").is_empty() else amount))
+	if not direct and lost>0:
+		if not skills.active("damned_armor").is_empty() and enemies.has(attacker) and bool(attacker.get("alive",false)):damage_enemy(attacker,lost/2)
+		for linked in enemies:
+			if float(linked.get("voodoo_time",0))>0 and bool(linked.get("alive",false)) and player.distance_to(Vector2(linked["x"],linked["y"]))<=6:damage_enemy(linked,lost)
 	if psychic and lost>0 and not skills.active("psychic_reflect").is_empty() and enemies.has(attacker) and bool(attacker.get("alive",false)):
 		# Offline reflection uses actual HP loss, after shields, with no recursion.
 		damage_enemy(attacker,lost)
@@ -457,9 +469,17 @@ func heal() -> bool:
 
 func remember_map() -> void:
 	if map_id >= 0:
-		map_states[str(map_id)] = {"player": [player.x, player.y], "enemies": enemies.duplicate(true),"respawn_saved_at":Time.get_unix_time_from_system(),"spawn_selection_version":2}
+		map_states[str(map_id)] = {"player": [player.x, player.y], "enemies": enemies.duplicate(true),"respawn_saved_at":Time.get_unix_time_from_system(),"spawn_selection_version":2,"ground_loot":ground_loot.duplicate(true)}
 
 func restore_map_state(state: Dictionary) -> void:
+	ground_loot=[]
+	var prior_loot: Variant=state.get("ground_loot",[])
+	if prior_loot is Array:
+		for drop in prior_loot.slice(0,128):
+			if not drop is Dictionary or not item_metadata.has(str(drop.get("key",""))):continue
+			if not valid_number(drop.get("x")) or not valid_number(drop.get("y")) or not valid_number(drop.get("count")):continue
+			var location:=Vector2(drop["x"],drop["y"])
+			if can_stand(location) and int(drop["count"])>0:ground_loot.append({"key":str(drop["key"]),"x":location.x,"y":location.y,"count":mini(100000,int(drop["count"]))})
 	var position: Variant = state.get("player", [])
 	if position is Array and position.size() == 2:
 		var proposed := Vector2(float(position[0]), float(position[1]))
@@ -475,6 +495,12 @@ func restore_map_state(state: Dictionary) -> void:
 			if not proposed.is_finite() or not can_stand(proposed):
 				continue
 			enemies.append({"monster_id": int(candidate.get("monster_id", 0)), "name": str(candidate.get("name", "")), "x": proposed.x, "y": proposed.y, "hp": clampi(int(candidate.get("hp", 36)), 0, story.encounter_hp(int(candidate.get("monster_id",0)))), "max_hp": story.encounter_hp(int(candidate.get("monster_id",0))), "cooldown": 1.0, "alive": bool(candidate.get("alive", true)), "respawn_seconds": maxf(1,float(candidate.get("respawn_seconds",60))), "respawn_timer": maxf(0,float(candidate.get("respawn_timer",60))-away), "source": candidate.get("source", {}),"home_x":float(candidate.get("home_x",proposed.x)),"home_y":float(candidate.get("home_y",proposed.y))})
+
+			var restored_enemy: Dictionary=enemies[-1]
+			for pool in ["mana","stamina"]:
+				if valid_number(candidate.get(pool)):restored_enemy[pool]=maxi(0,int(candidate[pool]))
+			for timer in ["curse_time","voodoo_time"]:
+				if valid_number(candidate.get(timer)):restored_enemy[timer]=maxf(0,float(candidate[timer])-away)
 
 	advance_respawns(0)
 	ensure_respawn_mix()
@@ -718,7 +744,9 @@ func weapon_range() -> float:
 		if str(key).begins_with("1:"):
 			result=maxf(result,float(item_metadata.get(key,{}).get("range",1))+0.5)
 	var ranged: Dictionary=skills.active("range_up")
-	return result+float(ranged.get("multiplier",0))
+	result+=float(ranged.get("multiplier",0))
+	if skills.equipped_weapon()=="gun" and not skills.active("snipe").is_empty():result=maxf(result,10.0)
+	return result
 
 func item_details(key: String) -> String:
 	var item: Dictionary=item_metadata.get(key,{})
@@ -1136,6 +1164,7 @@ func advance_respawns(seconds: float) -> void:
 		if float(enemy["respawn_timer"])>0:continue
 		var home:=Vector2(float(enemy.get("home_x",enemy["x"])),float(enemy.get("home_y",enemy["y"])))
 		if not home.is_finite() or not can_stand(home):home=find_start([int(home.x),int(home.y)])
+		enemy.erase("mana");enemy.erase("stamina")
 		enemy["x"]=home.x;enemy["y"]=home.y;enemy["hp"]=int(enemy.get("max_hp",36));enemy["alive"]=true;enemy["cooldown"]=1.4
 		skills.clear_enemy_status(enemy)
 
@@ -1224,3 +1253,19 @@ func server_hero(hero: int=-1) -> int:
 	var chosen: int=character_id if hero<0 else hero
 	# Original server/CHR/eligibility order differs from the CTF display roster.
 	return 7 if chosen==6 else 6 if chosen==7 else chosen
+
+func drop_loot(key: String,location: Vector2) -> void:
+	if not item_metadata.has(key) or ground_loot.size()>=128:
+		inventory[key]=int(inventory.get(key,0))+1
+		return
+	ground_loot.append({"key":key,"x":location.x,"y":location.y,"count":1})
+	collect_loot()
+
+func collect_loot() -> void:
+	var reach: float=10.0 if not skills.active("telekinesis").is_empty() else 1.5
+	for index in range(ground_loot.size()-1,-1,-1):
+		var drop: Dictionary=ground_loot[index];var location:=Vector2(drop["x"],drop["y"])
+		if player.distance_to(location)>reach or not clear_sight(player,location):continue
+		var key: String=drop["key"];inventory[key]=int(inventory.get(key,0))+int(drop["count"])
+		ground_loot.remove_at(index)
+		message="Picked up "+item_name(key)

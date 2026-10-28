@@ -26,7 +26,7 @@ def build(client=CLIENT,game=ROOT/'game'):
             'not_missing_files':'All 114 player and 36 monster skill records are present. Pending effects require engineering, source behavior validation or multiplayer/ally targets; another skill-tree file is not established as missing.'}
 
 def main():
-    report=build();(ROOT/'analysis/v15-recovery-inventory.json').write_text(json.dumps(report,indent=2)+'\n')
+    report=build();(ROOT/'analysis/v16-recovery-inventory.json').write_text(json.dumps(report,indent=2)+'\n')
     doc='''# Remaining recovery inputs and implementation limits
 
 This is a measured inventory of the supplied 3.8 server packages and RMA 7.0
@@ -63,6 +63,10 @@ the remaining combat/instance rules, but source code is not asserted to be a
 necessary file for every unimplemented effect.
 
 ## Code work, not established missing files
+
+108 of 114 player entries now have playable offline behavior. Thirteen entries
+added in v0.16 use reconstructed effects grounded in original descriptions, with
+explicit notes in the skill menu; these are not claims of exact native behavior.
 
 All 114 player skill records, all 36 monster skill records, class text, equipment
 tables and 48 offline music tracks are present. The remaining effects below

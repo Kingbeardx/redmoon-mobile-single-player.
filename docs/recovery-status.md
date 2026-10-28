@@ -35,6 +35,10 @@ necessary file for every unimplemented effect.
 
 ## Code work, not established missing files
 
+108 of 114 player entries now have playable offline behavior. Thirteen entries
+added in v0.16 use reconstructed effects grounded in original descriptions, with
+explicit notes in the skill menu; these are not claims of exact native behavior.
+
 All 114 player skill records, all 36 monster skill records, class text, equipment
 tables and 48 offline music tracks are present. The remaining effects below
 already have data. Exact accuracy, advanced resource theft/auras, linked monster
@@ -52,24 +56,11 @@ iOS needs an Apple build/signing environment; it is not blocked on Redmoon art.
 ### Player effects still reference-only
 
 - 6: Dimensional Gate
-- 7: Voodoo
 - 15: Recall
 - 28: Teleport
-- 29: Soul Drinker
-- 33: Psycho Kinesis
-- 38: Evasion
 - 54: Concentration
-- 56: Snipe
-- 58: Dysperse
-- 59: Chain Reaction
-- 68: Drain
 - 301: Resurrection
-- 304: Starlight
-- 305: Soul Crush
-- 314: Holy Shield
-- 315: Damned Armor
 - 321: Rabbit's Foot
-- 361: Purity of Heart
 
 ### Missing or version-mismatched object paths
 

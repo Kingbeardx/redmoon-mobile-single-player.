@@ -44,6 +44,8 @@ func _initialize() -> void:
 	arena(w);w.hp=w.max_hp();w.armor_bonus=50;w.mana=100;var poison_hp: int=w.hp
 	w.skills.buffs[13]={"mode":"mana_shield","remaining":10,"multiplier":75,"name":"fixture"}
 	w.skills.apply_ailment("poison",6);w.skills.tick(.9);check(w.hp==poison_hp,"poison does not tick before a full second")
+	var poison_save: Dictionary=w.skills.serialize().duplicate(true);w.skills.restore(poison_save)
+	check(w.skills.poison_elapsed>0.89,"poison tick progress survives saving and loading")
 	w.skills.tick(.11);check(w.hp==poison_hp-2*(w.max_hp()/100) and w.mana==100,"recovered poison ticks bypass armor and mana shields")
 	w.skills.ailments.clear();poison_hp=w.hp;w.skills.tick(2);check(w.hp==poison_hp,"cleansing stops poison damage")
 	prepare(w,73);w.skills.apply_ailment("poison",6);check(w.skills.cast(73) and not w.skills.ailments.has("poison"),"Sweet Water removes poison")

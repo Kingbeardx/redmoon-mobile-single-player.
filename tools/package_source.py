@@ -78,6 +78,8 @@ EVIDENCE += tuple(str(path.relative_to(ROOT/'analysis'))
                   if path.suffix in ('.asm','.json'))
 
 
+EVIDENCE += tuple(str(path.relative_to(ROOT/"analysis")) for path in sorted((ROOT/"analysis").glob("v16-*")) if path.is_file() and path.suffix in (".json",".log",".png"))
+
 def main():
     OUTPUT.parent.mkdir(parents=True, exist_ok=True)
     files = [ROOT / 'README.md', ROOT / 'requirements-analysis.txt', ROOT / '.gitignore']

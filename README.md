@@ -382,3 +382,13 @@ python3 tools/recovery_inventory.py
 ```
 
 Original art, client/server binaries and archives remain outside Git.
+
+## v0.16 offline restoration
+
+108/114 player entries now have playable behavior. Thirteen new reconstructed
+effects add linked damage, finite energy drains, ranged loot collection, evasion,
+sniping, scatter/chain attacks and support buffs. Loot persists between visits;
+new effects retain the original class/level/honor/cost gates and icons.
+
+See [evidence and adaptations](docs/offline-restoration-v16.md). Full original
+combat, later story, six player entries and multiplayer remain unfinished.

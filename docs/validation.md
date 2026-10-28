@@ -191,3 +191,18 @@ for ZIP integrity, matching update certificate, package/version, original payloa
 references and absence of Internet permission. No physical Android device or iOS
 build was tested. Build metadata and the measured input-gap report accompany the
 source backup; the player ZIP includes the APK and Missing-Files.txt.
+
+## v0.16 offline restoration
+
+713 Godot checks passed across the existing gameplay, story, UI and music suites
+plus new restored-effects (52) and touch/loot UI (3) suites. All 60 Python tests
+and 4 recovered-rule checks passed. The source-backed requirement/icon catalog
+contains 108 playable player entries and six unavailable entries. Thirteen new
+effects are explicitly offline adaptations; see offline-restoration-v16.md.
+
+New checks cover finite energy pools, no overkill drain/reflect rewards, curse
+expiry/heal blocking, defense exclusions, ranged gun attacks, bounded secondary
+hits, buff persistence, ground-loot persistence, malformed loot rejection and
+real touch-triggered Psycho Kinesis. The v16-loot.png render was inspected.
+Android package/signature/resource verification is recorded in v16-build.json.
+No physical Android device or iOS build was available.

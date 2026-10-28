@@ -47,6 +47,7 @@ func cast(enemy: Dictionary,id: int) -> bool:
 	var mode: String=str(row["mode"])
 	enemy["action_remaining"]=.55
 	if mode=="heal":
+		if float(enemy.get("curse_time",0))>0:return false
 		var maximum: int=int(enemy.get("max_hp",36));var healing: int=maxi(1,maximum*int(row["multiplier"])/100)
 		enemy["hp"]=mini(maximum,int(enemy["hp"])+healing)
 	else:

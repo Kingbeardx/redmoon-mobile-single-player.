@@ -12,7 +12,7 @@ var ailments: Dictionary={}
 var control_grace: float=0
 var poison_elapsed: float=0
 const CONTROL_TYPES=["root","freeze","sleep"]
-const BUFF_MODES=["disguise","attack_up","haste","mana_shield","barrier","reload","range_up","fear_aura","status_guard","purify_guard","decoy","taunt","hide","attack_speed","psychic_reflect","berserker","nimble","zephyrus"]
+const BUFF_MODES=["disguise","attack_up","haste","mana_shield","barrier","reload","range_up","fear_aura","status_guard","purify_guard","decoy","taunt","hide","attack_speed","psychic_reflect","berserker","nimble","zephyrus","evasion","snipe","scatter","chain","starlight","holy_shield","damned_armor","purity","telekinesis"]
 const RECOVERY: float=.8 # Offline input pacing, not an original server delay.
 
 func setup(owner_world,data: Variant) -> void:
@@ -50,6 +50,7 @@ func entry(id: int) -> Dictionary:
 	return catalog.get(id,{})
 
 func equipped_weapon() -> String:
+	if world==null:return ""
 	for key in world.equipment.values():
 		if str(key).begins_with("1:"):
 			# Original weapon families share stable eligibility masks, including
@@ -121,7 +122,7 @@ func tick(delta: float) -> void:
 	for e in effects:e["remaining"]-=seconds
 	effects=effects.filter(func(e: Dictionary)->bool:return e["remaining"]>0)
 	for enemy in world.enemies:
-		for name in ["root_time","weaken_time","slow_time","stun_time","sleep_time","freeze_time","blind_time","expose_time","confuse_time"]:
+		for name in ["root_time","weaken_time","slow_time","stun_time","sleep_time","freeze_time","blind_time","expose_time","confuse_time","curse_time","voodoo_time"]:
 			if enemy.has(name):enemy[name]=maxf(0,float(enemy[name])-seconds)
 
 func active(mode: String) -> Dictionary:
@@ -130,11 +131,13 @@ func active(mode: String) -> Dictionary:
 	return {}
 
 func clear_enemy_status(enemy: Dictionary) -> void:
-	for name in ["root","weaken","slow","stun","sleep","freeze","blind","expose","confuse"]:enemy.erase(name+"_time")
+	for name in ["root","weaken","slow","stun","sleep","freeze","blind","expose","confuse","curse","voodoo"]:enemy.erase(name+"_time")
 
 func factor(mode: String) -> float:
 	var buff: Dictionary=active(mode)
-	return maxf(.05,float(buff.get("multiplier",100))/100.0) if not buff.is_empty() else 1.0
+	var value: float=maxf(.05,float(buff.get("multiplier",100))/100.0) if not buff.is_empty() else 1.0
+	if mode=="attack_up" and not active("starlight").is_empty():value=maxf(value,1.2)
+	return value
 
 func break_disguise() -> void:
 	for id in buffs.keys():
@@ -181,7 +184,7 @@ func cast(id: int,destination: Vector2=Vector2(INF,INF)) -> bool:
 	if mode=="decoy" and not active("decoy").is_empty():world.message="Scarecrow is still protecting you.";return false
 	if world.mana<used:world.message="Not enough mana for "+row["name"]+".";return false
 	var targets: Array=[]
-	var offensive: bool=mode in ["damage","danger_attack","rush","expose","confuse","root","weaken","slow","sleep","freeze","blind","damage_blind","damage_freeze","leech"]
+	var offensive: bool=mode in ["damage","danger_attack","rush","voodoo","curse","energy_drain","vital_drain","expose","confuse","root","weaken","slow","sleep","freeze","blind","damage_blind","damage_freeze","leech"]
 	var rush_end: Vector2=world.player
 	if offensive:
 		var limit: float=maxf(1,float(row["range"]))
@@ -211,7 +214,7 @@ func cast(id: int,destination: Vector2=Vector2(INF,INF)) -> bool:
 	if offensive:
 		world.facing=world.facing_for(world.player.direction_to(Vector2(targets[0]["x"],targets[0]["y"])));world.start_attack_animation(.45)
 	var amount: int=0
-	if mode in ["damage","danger_attack","rush","damage_blind","damage_freeze","leech"]:
+	if mode in ["damage","danger_attack","rush","damage_blind","damage_freeze","leech","energy_drain","vital_drain"]:
 		# Reuse the current offline combat base; full original attack pipeline is
 		# not recovered. Apply the original skill's percentage and actual range.
 		amount=maxi(1,int((12+world.weapon_bonus+(world.level-1)*2)*float(row["multiplier"])/100.0))
@@ -222,6 +225,7 @@ func cast(id: int,destination: Vector2=Vector2(INF,INF)) -> bool:
 			var before_hp: int=int(enemy["hp"])
 			world.damage_enemy(enemy,amount)
 			var actual_damage: int=before_hp-int(enemy["hp"])
+			if mode in ["energy_drain","vital_drain"]:drain_energy(enemy,actual_damage,mode=="vital_drain")
 			if mode=="leech":world.hp=mini(world.max_hp(),world.hp+actual_damage*int(row["leech_percent"])/100)
 			if mode in ["damage_blind","damage_freeze"] and bool(enemy["alive"]):
 				var ailment: String="blind_time" if mode=="damage_blind" else "freeze_time"
@@ -238,6 +242,8 @@ func cast(id: int,destination: Vector2=Vector2(INF,INF)) -> bool:
 		world.hp=mini(world.max_hp(),world.hp+amount)
 		effects.append({"x":world.player.x,"y":world.player.y,"mode":"heal","remaining":.65,"label":"+%d" % amount})
 	elif offensive:
+		if mode=="voodoo":
+			for creature in world.enemies:creature.erase("voodoo_time")
 		var duration: float=maxf(1,world.effective_stat("spirit")/20+int(row["duration_base"]))
 		for enemy in targets:
 			enemy[mode+"_time"]=duration
@@ -247,14 +253,17 @@ func cast(id: int,destination: Vector2=Vector2(INF,INF)) -> bool:
 		ailments.clear();control_grace=2.0
 		effects.append({"x":world.player.x,"y":world.player.y,"mode":"heal","remaining":.65,"label":"CLEANSED"})
 	else:
+		if mode in ["scatter","chain"]:end_mode("scatter");end_mode("chain")
 		if mode=="purify_guard":ailments.clear();control_grace=2.0
 		var duration: float=maxf(.2,(world.effective_stat("spirit")/int(row.get("duration_spirit_divisor",20))+int(row["duration_base"]))*float(row.get("duration_scale",1)))
 		buffs[id]={"mode":mode,"remaining":duration,"multiplier":row.get("runtime_multiplier",row["multiplier"]),"name":row["name"]}
 		if mode=="decoy":buffs[id]["charges"]=3
 		if mode=="berserker":world.hp=mini(world.hp,world.max_hp());world.danger=mini(world.danger,world.max_danger())
 		effects.append({"x":world.player.x,"y":world.player.y,"mode":"buff","remaining":.65,"label":row["name"]})
+	if mode=="telekinesis":world.collect_loot()
 	world.message=str(row["name"])+(" · %d target(s)" % targets.size() if offensive else "")+" · %d MP" % used
-	if mode=="danger_attack":world.message=str(row["name"])+" · Danger Points consumed"
+	if mode=="danger_attack":if mode=="telekinesis":world.collect_loot()
+	world.message=str(row["name"])+" · Danger Points consumed"
 	if world.story.flags!=story_flags:world.message="Story updated · "+world.story.title()+" · Honor cap ±%d" % world.honor_cap()
 	return true
 
@@ -282,6 +291,9 @@ func restore(saved: Dictionary) -> void:
 			if name not in ["root","freeze","sleep","blind","slow","poison"] or not world.valid_number(prior_ailments[name]):continue
 			var remaining: float=clampf(float(prior_ailments[name])-away,0,3 if name in CONTROL_TYPES else 6)
 			if remaining>0:ailments[name]=remaining
+	var prior_poison: Variant=saved.get("poison_elapsed",0)
+	if ailments.has("poison") and world.valid_number(prior_poison):
+		poison_elapsed=clampf(float(prior_poison),0,0.999999)
 	var timers: Variant=saved.get("cooldowns",{})
 	if timers is Dictionary:
 		for key in timers:
@@ -328,3 +340,32 @@ func absorb_decoy() -> bool:
 		world.message="Scarecrow blocked the attack · %d remaining" % charges
 		return true
 	return false
+
+func drain_energy(enemy: Dictionary,damage: int,vital: bool) -> void:
+	var info: Dictionary=world.monster_metadata.get(int(enemy.get("monster_id",0)),{})
+	var spirit: int=maxi(0,int(info.get("spirit",0)))
+	var maximum: int=50+(spirit/15)*(spirit/10)
+	var current: int=clampi(int(enemy.get("mana",maximum)),0,maximum)
+	var stamina: int=clampi(int(enemy.get("stamina",2000)),0,2000)
+	var stolen_mp: int=mini(current,maxi(0,damage));var stolen_sp: int=mini(stamina,maxi(0,damage))
+	enemy["mana"]=current-stolen_mp;enemy["stamina"]=stamina-stolen_sp
+	world.mana=mini(world.max_mana(),world.mana+stolen_mp)
+	world.stamina=mini(2000,world.stamina+stolen_sp)
+	if vital:world.hp=mini(world.max_hp(),world.hp+maxi(0,damage))
+
+func secondary_hits(primary: Dictionary,amount: int) -> void:
+	var scatter: bool=not active("scatter").is_empty()
+	if not scatter and active("chain").is_empty():return
+	var anchor:=Vector2(primary["x"],primary["y"]);var visited: Array=[primary]
+	var damage: int=amount/2 if scatter else amount
+	for jump in range(3):
+		var target: Dictionary={};var nearest: float=2.0 if scatter else 3.0
+		for enemy in world.enemies:
+			if visited.has(enemy) or not bool(enemy.get("alive",false)):continue
+			var pos:=Vector2(enemy["x"],enemy["y"]);var distance: float=anchor.distance_to(pos)
+			if distance<=nearest and world.clear_sight(anchor,pos):target=enemy;nearest=distance
+		if target.is_empty():break
+		if not scatter:damage=damage*3/4
+		world.damage_enemy(target,maxi(1,damage));visited.append(target)
+		effects.append({"x":target["x"],"y":target["y"],"mode":"damage","remaining":.65,"label":"−%d" % maxi(1,damage)})
+		if not scatter:anchor=Vector2(target["x"],target["y"])

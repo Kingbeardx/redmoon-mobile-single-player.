@@ -21,7 +21,7 @@ EXTRA_MODES = {9:'sleep',303:'sleep',86:'sleep',19:'freeze',84:'blind',
                55:'status_guard',85:'status_guard',311:'status_guard',40:'decoy',43:'taunt',
                34:'hide',48:'attack_speed',312:'attack_speed',65:'psychic_reflect',
                64:'warp',25:'rush',45:'rush',47:'berserker',18:'nimble',75:'nimble',
-               77:'attack_up',79:'attack_up',70:'restore',372:'zephyrus',90:'expose',332:'confuse'}
+               77:'attack_up',79:'attack_up',70:'restore',372:'zephyrus',90:'expose',332:'confuse',7:'voodoo',33:'telekinesis',29:'energy_drain',68:'vital_drain',38:'evasion',56:'snipe',58:'scatter',59:'chain',304:'starlight',305:'curse',314:'holy_shield',315:'damned_armor',361:'purity'}
 RUNTIME_NOTES={34:'Avoids physical damage while active; psychic attacks still hurt. Cast again to end Hide.',
                48:'Basic attacks recover 1.5× faster. Speed effects do not stack.',
                312:'Basic attacks recover 2× faster in offline play. Speed effects do not stack.',
@@ -38,6 +38,7 @@ RUNTIME_NOTES={34:'Avoids physical damage while active; psychic attacks still hu
                372:'Self-cast support increases movement and basic attack speed by 20%. Cannot refresh while active.',
                90:'Offline exposure reduces a creature\'s damage and defense to 70% while active.',
                332:'Disorients nearby creatures, making them wander instead of pursuing you.'}
+RUNTIME_NOTES.update({33: "Offline reconstruction: collect visible dropped items within 10 tiles while active. Ordinary pickup requires walking within 1.5 tiles.",7: 'Offline reconstruction: link one creature for the source duration; actual HP damage you suffer also hurts that creature while it stays within range.', 29: 'Offline reconstruction: a sword strike drains creature MP and stamina, returning only the energy actually removed.', 68: 'Offline reconstruction: damage drains HP and creature MP/stamina. Healing is limited to damage actually dealt.', 38: 'Offline reconstruction: 20% chance to evade physical damage. Psychic attacks and poison are unaffected.', 56: 'Offline reconstruction: gun attacks can reach visible creatures up to 10 tiles away while active.', 58: 'Offline reconstruction: basic attacks splash 50% damage to up to three creatures within two tiles of the target.', 59: 'Offline reconstruction: basic attacks jump to up to three nearby creatures, losing 25% damage at each jump. Does not stack with Dysperse.', 304: 'Offline self-cast reconstruction: +20% attack and 20% damage reduction. Ally targeting is unavailable.', 305: 'Offline reconstruction: curses a creature, reducing its damage and defense to 70% and preventing its healing for the source duration.', 314: 'Offline reconstruction: the source 120 multiplier gives 20% stronger protection, dividing incoming damage by 1.2.', 315: 'Offline reconstruction: returns 50% of actual HP damage to the attacking creature. Poison cannot reflect.', 361: 'Offline reconstruction: uses the source 70 multiplier to fill Danger Points at 100/70 of the usual rate.'})
 MONSTER_MODES={0:'damage',1:'heal',2:'root',17:'blind',18:'physical_damage',
                19:'damage',22:'sleep',26:'freeze',38:'slow',70:'damage',
                71:'damage',72:'damage',73:'damage',42:'poison'}

@@ -347,7 +347,8 @@ func _update_ui() -> void:
 	dp_bar.max_value=world.max_danger();dp_bar.value=world.danger;dp_text.text="DP %d%%" % (world.danger*100/world.max_danger())
 	if world.danger>=world.max_danger():dp_text.text="DP · SPECIAL READY"
 	hp_bar.max_value=world.max_hp();hp_bar.value=world.hp;mp_bar.max_value=world.max_mana();mp_bar.value=world.mana
-	hp_text.text="HP %d / %d" % [world.hp,world.max_hp()];mp_text.text="MP %d / %d" % [world.mana,world.max_mana()]
+	hp_text.text="HP %s / %s" % [compact_amount(world.hp),compact_amount(world.max_hp())];mp_text.text="MP %s / %s" % [compact_amount(world.mana),compact_amount(world.max_mana())]
+	hp_text.tooltip_text="%d / %d HP" % [world.hp,world.max_hp()];mp_text.tooltip_text="%d / %d MP" % [world.mana,world.max_mana()]
 	location_label.text=world.map_name()
 	if status.text!=world.message:status_age=0;status.modulate.a=1
 	status.text=world.message
@@ -364,7 +365,7 @@ func _update_ui() -> void:
 		button.picture.texture=game_ui.skill_texture(id)
 		button.tooltip_text=str(row.get("name","Choose a skill"))+" · Open BAG → SKILLS to assign"
 		button.disabled=id!=0 and (world.skills.requirement(id)!="Ready" or not world.skills.has_resource(id))
-		button.set_state(("DP" if row.get("mode","")=="danger_attack" else str(world.skills.cost(id))) if id!=0 else "+",maxf(cooldown,float(world.skills.cooldowns.get(id,0))/world.skills.RECOVERY))
+		button.set_state(("DP" if row.get("mode","")=="danger_attack" else compact_amount(world.skills.cost(id))) if id!=0 else "+",maxf(cooldown,float(world.skills.cooldowns.get(id,0))/world.skills.RECOVERY))
 	var active: PackedStringArray=[]
 	for name in world.skills.ailments:active.append("%s · %ds" % [str(name).to_upper(),int(ceil(world.skills.ailments[name]))])
 	for buff in world.skills.buffs.values():active.append("%s · %ds%s" % [buff["name"],int(ceil(buff["remaining"]))," · %d hits" % int(buff["charges"]) if buff.has("charges") else ""])
@@ -437,6 +438,8 @@ func _draw() -> void:
 			elif (x + y) % 4 == 0:
 				draw_circle(point, 1.3, Color(0.13, 0.17, 0.21))
 	var entities: Array = object_draws.duplicate()
+	for drop in world.ground_loot:
+		entities.append({"position":Vector2(drop["x"],drop["y"]),"loot":drop,"player":false})
 	for enemy in world.enemies:
 		if bool(enemy.get("alive", false)):
 			entities.append({"position": Vector2(float(enemy["x"]), float(enemy["y"])), "enemy": enemy, "player": false})
@@ -455,6 +458,10 @@ func _draw() -> void:
 		if entry.has("exit"):
 			draw_circle(point,8,TEAL)
 			draw_string(ThemeDB.fallback_font,point+Vector2(-16,-15),"EXIT",HORIZONTAL_ALIGNMENT_LEFT,-1,13,TEAL)
+		elif entry.has("loot"):
+			draw_circle(point,7,Color.GOLD)
+			draw_arc(point,11,0,TAU,20,Color(1,.8,.3,.5),2)
+			draw_string(ThemeDB.fallback_font,point+Vector2(-28,-16),"LOOT",HORIZONTAL_ALIGNMENT_LEFT,-1,16,Color.GOLD)
 		elif entry.has("object"):
 			_draw_image(str(entry["object"]),point-TILE*0.5)
 		else:
@@ -755,3 +762,8 @@ func approach_npc(delta: float) -> Vector2:
 	while not npc_path.is_empty() and world.player.distance_to(Vector2(npc_path[0])+Vector2(0.5,0.5))<0.2:npc_path.pop_front()
 	if npc_path.is_empty():return Vector2.ZERO
 	return world.player.direction_to(Vector2(npc_path[0])+Vector2(0.5,0.5))
+
+func compact_amount(value: int) -> String:
+	if value>=1000000:return ("%.1f" % (value/1000000.0)).trim_suffix(".0")+"M"
+	if value>=10000:return ("%.1f" % (value/1000.0)).trim_suffix(".0")+"K"
+	return str(value)
