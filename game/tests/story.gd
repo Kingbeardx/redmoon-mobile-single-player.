@@ -15,7 +15,7 @@ func boss(w,id: int) -> Dictionary:
 func _initialize() -> void:
 	var w=load("res://scripts/world.gd").new();w.initialize();w.create_character("StoryHero",1,"user://story-character.json")
 	check(not w.story.active() and w.honor_cap()==100,"new character does not bypass original level gate")
-	w.level=49;w.xp=49*40-10;w.story.update();check(not w.story.active(),"story remains locked at level 49")
+	w.level=49;w.xp=w.xp_required()-1;w.story.update();check(not w.story.active(),"story remains locked at level 49")
 	var defeated: Dictionary={"monster_id":5,"hp":1,"alive":true,"x":w.player.x,"y":w.player.y};w.damage_enemy(defeated,10)
 	check(w.level==50 and w.story.has(1),"ordinary combat reaching level fifty starts original story")
 	check(w.travel_options().has(74) and not w.travel_options().has(75),"story guide unlocks destinations in order")

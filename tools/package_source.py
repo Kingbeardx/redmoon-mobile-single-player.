@@ -63,6 +63,21 @@ EVIDENCE += ('v14-stance-evidence.json', 'v14-stance-evidence.asm', 'v14-build.j
              'story','story_ui','combat_stances','stances_ui')))
 
 
+EVIDENCE += ('v15-build.json', 'v15-actions.json', 'v15-art-pack.json',
+             'v15-attribute-growth.json', 'v15-recovery-inventory.json',
+             'v15-update-inventory.json', 'v15-skill-import.json', 'v15-story-import.json',
+             'v15-hud.png', 'v15-area-map.png', 'v15-python.log', 'v15-rules.log',
+             *('v15-'+name+'.log' for name in ('smoke','adventure','input_smoke',
+             'upstream_features','recovery_and_market','recovered_items','new_adventure',
+             'doctor_dialogue','inventory_dialogue','creation_ui','accessibility',
+             'end_to_end','music_playback','v09_features','skills','skill_ui',
+             'advanced_skills','advanced_ui','status_combat','protection_ui',
+             'story','story_ui','combat_stances','stances_ui','recovered_systems','recovery_ui')))
+EVIDENCE += tuple(str(path.relative_to(ROOT/'analysis'))
+                  for path in sorted((ROOT/'analysis/v15-native').glob('*'))
+                  if path.suffix in ('.asm','.json'))
+
+
 def main():
     OUTPUT.parent.mkdir(parents=True, exist_ok=True)
     files = [ROOT / 'README.md', ROOT / 'requirements-analysis.txt', ROOT / '.gitignore']

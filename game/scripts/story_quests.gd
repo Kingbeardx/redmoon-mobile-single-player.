@@ -109,6 +109,7 @@ func finish(npc: Dictionary,choice: int=-1,path: String="user://progress.json") 
 	var verb: String=action(npc)
 	if verb.is_empty():return false
 	var old_flags: int=flags;var old_items: Dictionary=world.inventory.duplicate(true);var old_honor: int=world.honor
+	var old_progress: Dictionary=progress_checkpoint();var earned: int=0
 	if verb=="QUIZ":
 		if choice<0 or choice>3:return false
 		world.inventory["5:1"]=int(world.inventory.get("5:1",0))-1
@@ -116,13 +117,16 @@ func finish(npc: Dictionary,choice: int=-1,path: String="user://progress.json") 
 		else:last_reply=text(196)+"\n\nRecover another Microfilm from the Spy's house."
 	elif verb=="MAKE THE MAP":
 		flags|=8;increase_abs_honor(30);last_reply=words([205,206,207,208,209])+"\n\nHonor cap raised to ±300."
+		earned=world.award_experience(world.rules.experience[200]/50)
 	elif verb=="ACCEPT ESPER MISSION":
 		flags|=16;last_reply=words([212,213,214])+"\n\nYour destination is Sahara Dungeon 1."
 	elif verb=="REPORT ESPER'S DEFEAT":
 		flags|=64;increase_abs_honor(50);world.inventory["5:102"]=int(world.inventory.get("5:102",0))+1
 		last_reply=words([215,216,217,218,219])+"\n\nHonor cap raised to ±400. Received Sahara1 Map."
+		earned=world.award_experience(world.rules.experience[300]/50)
 	if world.save_game(path)!=OK:
-		flags=old_flags;world.inventory=old_items;world.honor=old_honor;world.message="Could not save quest progress. Your items were kept.";return false
+		flags=old_flags;world.inventory=old_items;world.honor=old_honor;restore_progress(old_progress);world.message="Could not save quest progress. Your items were kept.";return false
+	if earned>0:last_reply+="\n\n+%d XP" % earned
 	world.message=title();return true
 
 func increase_abs_honor(amount: int) -> void:
@@ -134,12 +138,20 @@ func on_defeat(id: int) -> void:
 	if not active():return
 	if world.map_id==74 and id==90 and not has(4) and not film():
 		var before: int=flags;flags|=2;world.inventory["5:1"]=1
-		if world.save_game()!=OK:flags=before;world.inventory["5:1"]=0;world.message="Could not save the Microfilm. Return to retry the Spy encounter.";return
+		var checkpoint: Dictionary=progress_checkpoint()
+		if (before&2)==0:world.award_experience(world.rules.experience[100]/50)
+		if world.save_game()!=OK:flags=before;world.inventory["5:1"]=0;restore_progress(checkpoint);world.message="Could not save the Microfilm. Return to retry the Spy encounter.";return
 		world.message="Microfilm recovered · Honor cap ±200. Visit the Archeologist in Downtown 2."
 	elif world.map_id==72 and id==92 and has(16) and not has(32):
 		flags|=32
 		if world.save_game()!=OK:flags&=~32;world.message="Could not save the victory. Return to retry the Esper encounter.";return
 		world.message="Esper defeated. Return to Kasham's House."
+
+func progress_checkpoint() -> Dictionary:
+	return {"level":world.level,"xp":world.xp,"bonus_points":world.bonus_points,"hp":world.hp,"mana":world.mana}
+
+func restore_progress(checkpoint: Dictionary) -> void:
+	for key in checkpoint:world.set(key,checkpoint[key])
 
 func prepare_travel(id: int) -> void:
 	# The original scripts that reset these encounter rooms are Removed.

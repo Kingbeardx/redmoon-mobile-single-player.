@@ -119,16 +119,19 @@ func show_item_detail(parent: Node) -> void:
 	label("Owned: %d" % int(scene.world.inventory[key]),parent)
 	var equipped: bool=scene.world.equipment.values().has(key)
 	var kind: String=key.get_slice(":",0)
+	var map_id: int=scene.world.map_item_destination(key)
 	var action: String="UNEQUIP" if equipped else ("EQUIP" if kind in ["1","2","3"] else "USE ITEM")
+	if map_id>=0:action="READ MAP"
 	item_action=button(action,func():
+		if map_id>=0:show_map(map_id);return
 		if equipped:
 			for slot in scene.world.equipment.keys():
 				if scene.world.equipment[slot]==key:scene.world.equipment.erase(slot)
 			scene.world.refresh_equipment();scene.world.save_game();scene.world.message="Unequipped "+scene.world.item_name(key)
 		else:scene.world.use_item(key)
 		show_bag(),parent)
-	item_action.disabled=item.is_empty() or kind not in ["1","2","3","4"]
-	if not equipped and not item.is_empty() and kind in ["1","2","3"] and int(item.get("characters",0))!=0 and (int(item.get("characters",0)) & (1<<scene.world.character_id))==0:
+	item_action.disabled=item.is_empty() or (kind not in ["1","2","3","4"] and map_id<0)
+	if not equipped and not item.is_empty() and kind in ["1","2","3"] and int(item.get("characters",0))!=0 and (int(item.get("characters",0)) & (1<<scene.world.server_hero()))==0:
 		label("Your hero cannot equip this item.",parent,24);item_action.disabled=true
 	if scene.world.shop_available:
 		button("SELL ONE · %d GOLD" % (int(item.get("price",0))/2),func():scene.world.sell_item(key);show_bag(),parent)
@@ -149,7 +152,7 @@ func show_stats() -> void:
 	render_stats()
 
 func render_stats() -> void:
-	open_page("%s · %s · LV %d · XP %d/%d" % [scene.world.player_name,scene.world.HERO_NAMES[scene.world.character_id],scene.world.level,scene.world.xp,scene.world.level*40],"stats")
+	open_page("%s · %s · LV %d · XP %d/%d" % [scene.world.player_name,scene.world.HERO_NAMES[scene.world.character_id],scene.world.level,scene.world.xp,scene.world.xp_required()],"stats")
 	stat_plus.clear();stat_minus.clear()
 	var spent: int=draft_total()
 	label("UNSPENT POINTS: %d     ·     PLANNED: %d" % [scene.world.bonus_points-spent,spent],content,30)
@@ -159,11 +162,11 @@ func render_stats() -> void:
 		var key: String=attribute
 		var row:=HBoxContainer.new();row.add_theme_constant_override("separation",12);rows.add_child(row)
 		label(attribute.capitalize(),row,30).custom_minimum_size.x=180
-		label("%d → %d" % [scene.world.effective_stat(attribute),scene.world.effective_stat(attribute)+int(draft[attribute])],row,30).custom_minimum_size.x=180
-		label(DESCRIPTIONS[attribute],row,24).size_flags_horizontal=Control.SIZE_EXPAND_FILL
+		label("%d → %d" % [scene.world.effective_stat(attribute),scene.world.preview_stat(attribute,draft)],row,30).custom_minimum_size.x=180
+		label("+%d per point · " % scene.world.stat_gain(attribute)+DESCRIPTIONS[attribute],row,24).size_flags_horizontal=Control.SIZE_EXPAND_FILL
 		var minus:=button("−",func():change_stat(key,-1),row);minus.custom_minimum_size.x=72;minus.disabled=int(draft[attribute])==0;stat_minus[attribute]=minus
 		var plus:=button("+",func():change_stat(key,1),row);plus.custom_minimum_size.x=72;plus.disabled=spent>=scene.world.bonus_points;stat_plus[attribute]=plus
-	label("HEALTH %d → %d     MANA %d → %d" % [scene.world.max_hp(),scene.world.hp_for(scene.world.effective_stat("power")+int(draft["power"])),scene.world.max_mana(),scene.world.mana_for(scene.world.effective_stat("spirit")+int(draft["spirit"]))],rows,28)
+	label("HEALTH %d → %d     MANA %d → %d" % [scene.world.max_hp(),scene.world.hp_for(scene.world.preview_stat("power",draft)),scene.world.max_mana(),scene.world.mana_for(scene.world.preview_stat("spirit",draft))],rows,28)
 	label("Level up to earn points. HP/mana change at thresholds. Apply to confirm.",rows,24)
 	var actions:=HBoxContainer.new();content.add_child(actions)
 	apply_button=button("APPLY POINTS",func():
@@ -190,6 +193,7 @@ func show_journal() -> void:
 	button("STORY · "+scene.world.story.title(),show_story,list)
 	button("SAVE GAME",func():scene._save();show_journal(),list)
 	button("MINIMAP: "+("ON" if scene.minimap_visible else "OFF"),func():scene.minimap_visible=not scene.minimap_visible;scene.queue_redraw();show_journal(),list)
+	button("VIEW AREA MAP",show_map,list)
 	button("TOWN GUIDE / TRAVEL",func():close();scene.inventory_panel.show();scene._travel_rows(),list)
 	button("TALK TO NEARBY NPC",talk_nearby,list)
 	button("CHARACTER SKILLS & HOTBAR",show_skills,list)
@@ -329,7 +333,7 @@ func show_skills() -> void:
 	var rows: Array=system.for_hero();rows.push_front(system.entry(-1))
 	for item in rows:
 		var id: int=int(item["id"]);var ready: bool=system.requirement(id)=="Ready"
-		var title: String=str(item["name"])+"\nLv %d · %s" % [int(item["level"]),"READY" if ready else "LOCKED"]
+		var title: String=str(item["name"])+"\nLv %d · %s" % [int(item["level"]),"REFERENCE" if item["mode"]=="pending" else "READY" if ready else "LOCKED"]
 		var option:=button(title,func():selected_skill=id;show_skills(),list)
 		option.icon=skill_texture(id);option.expand_icon=true;option.add_theme_constant_override("icon_max_width",54);option.add_theme_font_size_override("font_size",23);option.custom_minimum_size.y=82
 		option.modulate=Color.WHITE if ready else Color("a7a4ae")
@@ -343,7 +347,7 @@ func show_skills() -> void:
 	var reason: String=system.requirement(selected_skill)
 	label(reason.to_upper(),details,28)
 	skill_cast_button=button("CAST NOW",func():close();scene._cast_skill_id(selected_skill),details)
-	skill_cast_button.disabled=reason!="Ready" or scene.world.mana<system.cost(selected_skill)
+	skill_cast_button.disabled=reason!="Ready" or not system.has_resource(selected_skill)
 	var binds:=HBoxContainer.new();binds.add_theme_constant_override("separation",8);details.add_child(binds)
 	for slot in range(3):
 		var index: int=slot
@@ -351,9 +355,11 @@ func show_skills() -> void:
 			if system.assign(index,selected_skill):scene._save();show_skills(),binds)
 		bind.size_flags_horizontal=Control.SIZE_EXPAND_FILL;bind.disabled=reason!="Ready";skill_assign_buttons.append(bind)
 	label(str(row["description"]),details,26)
+	if row["mode"]=="pending":label("Original data recovered. This effect is not playable yet.",details,25)
 	if not str(row.get("runtime_note","")).is_empty():label(str(row["runtime_note"]),details,25)
 	var encoded: int=int(row["mana_encoded"])
 	var mana_text: String="%d MP" % encoded if encoded<1000000000 else "%d%% of maximum MP" % mini(100,encoded-1000000000)
+	if row["mode"]=="danger_attack":mana_text="Full DP meter · fills when you take damage"
 	if selected_skill in [1,2]:mana_text="1 MP per 2 HP restored"
 	label("Level %d  ·  %s\nRange %s tiles  ·  %s" % [int(row["level"]),mana_text,str(row["range"]),"AREA" if bool(row["area"]) else "SINGLE / SELF"],details,25)
 	var honor: int=int(row["honor"])
@@ -374,6 +380,7 @@ func show_effects() -> void:
 	label("Root stops movement. Freeze and sleep stop movement, attacks and most skills. Cleansing abilities and consumables remain usable. Damage wakes you from sleep. Blindness blocks basic attacks; slowing reduces movement speed.",body,26)
 	label("Cleansing skills remove harmful effects. Mental protection prevents new ones while it lasts. Control effects last up to 3 seconds, followed by a brief resistance window in this offline adventure.",body,26)
 	label("Hide avoids physical damage; psychic attacks still hurt. Red Halo returns psychic HP damage to its attacker. Attack-speed effects use the strongest active rate and do not stack.",body,26)
+	label("Poison damages HP each second and bypasses armor and mana shields. Cleansing removes it; mental protection can prevent it. Its duration is limited to 6 seconds in offline play.",body,26)
 	button("BACK TO SKILLS",show_skills,body)
 
 func refresh_effects() -> void:
@@ -396,7 +403,36 @@ func show_story() -> void:
 		button("GUIDE TO "+scene.world.map_name(target).to_upper(),func():
 			if scene.world.travel_to(target):close();scene.textures.clear();scene._sync_map_selection();scene._update_ui();scene.queue_redraw(),list)
 	button("TRACK ON MAP",func():scene.minimap_visible=true;close();scene.queue_redraw(),list)
-	label("The first chapter is playable. Later chapters and original quest XP rewards are not available yet.",list,24)
+	label("The first chapter and recovered XP rewards are playable. Later chapters still need their missing event programs.",list,24)
+
+func show_map(id: int=-1) -> void:
+	var w=scene.world;var destination: int=w.map_id if id<0 else id
+	var decoded: Dictionary={}
+	for row in w.catalog:
+		if int(row["id"])==destination:
+			var path: String=str(row.get("path",""))
+			if not path.is_empty() and not path.is_absolute_path() and not ".." in path.split("/"):decoded=w.read_json(w.data_root+"/"+path)
+	if decoded.is_empty():w.message="This map's server data is missing.";return
+	open_page("AREA MAP · "+w.map_name(destination),"map")
+	var body:=HBoxContainer.new();body.size_flags_vertical=Control.SIZE_EXPAND_FILL;body.add_theme_constant_override("separation",20);content.add_child(body)
+	var width: int=int(decoded["width"]);var height: int=int(decoded["height"])
+	var image:=Image.create(width,height,false,Image.FORMAT_RGBA8);image.fill(Color("0c1018"))
+	for y in range(height):
+		for x in range(width):
+			if int(decoded["walkable"][y*width+x])!=0:image.set_pixel(x,y,Color("5b8a93"))
+	var list:=VBoxContainer.new();list.custom_minimum_size.x=340
+	for npc in w.content.get("npcs",[]):
+		if int(npc.get("map_id",-1))==destination:
+			var point: Vector2=w.npc_position(npc)
+			image.fill_rect(Rect2i(Vector2i(point)-Vector2i.ONE,Vector2i(3,3)),Color.GOLD)
+	if destination==w.map_id:image.fill_rect(Rect2i(Vector2i(w.player)-Vector2i.ONE,Vector2i(3,3)),Color("8dffad"))
+	var picture:=TextureRect.new();picture.name="AreaMapImage";picture.texture=ImageTexture.create_from_image(image);picture.expand_mode=TextureRect.EXPAND_IGNORE_SIZE;picture.stretch_mode=TextureRect.STRETCH_KEEP_ASPECT_CENTERED;picture.size_flags_horizontal=Control.SIZE_EXPAND_FILL;picture.texture_filter=CanvasItem.TEXTURE_FILTER_NEAREST;body.add_child(picture)
+	var scroll:=ScrollContainer.new();scroll.custom_minimum_size.x=360;scroll.size_flags_vertical=Control.SIZE_EXPAND_FILL;body.add_child(scroll);scroll.add_child(list)
+	label("GREEN · Your position\nGOLD · Townspeople\nBLUE · Open ground",list,27)
+	for npc in w.content.get("npcs",[]):
+		if int(npc.get("map_id",-1))==destination:label(str(npc["name"]).trim_prefix("+"),list,25)
+	label("Maps can be read again. They are not consumed.",list,24)
+	button("BACK TO BAG",show_bag,list)
 
 func show_story_dialogue(npc: Dictionary,response: String="") -> void:
 	if not scene.world.story.can_talk(npc):return

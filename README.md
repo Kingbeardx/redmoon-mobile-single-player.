@@ -356,3 +356,29 @@ active rate. Stances save and expire correctly.
 See [combat stance evidence and limits](docs/combat-stances.md). This remains an
 offline reconstruction: full original damage/accuracy, DP, multiplayer and later
 story chapters remain incomplete.
+
+## v0.15 extended recovery
+
+95 player entries and 24 monster entries now have offline behavior. The pass adds
+all nine Danger Point specials, source XP and first-chapter XP rewards, original
+class-specific stat growth with old-save migration, running/stamina/rest recovery,
+aimed Warp and rush attacks, support effects, monster poison, original attack
+poses, creature selection and usable map items. Existing music, towns, gear,
+progress and the first story chapter remain playable.
+
+See [recovered systems and formulas](docs/recovered-systems.md) and the measured
+[remaining recovery inputs](docs/recovery-status.md). This is still an offline
+reconstruction, not the entire original MMORPG. The latter report distinguishes
+missing quest/map/art inputs from unimplemented effects whose data is already here.
+
+Additional regeneration tools after the existing asset pipeline:
+
+```sh
+python3 tools/skill_import.py /path/to/Redmoon
+python3 tools/character_actions.py /path/to/Redmoon
+python3 tools/app_icon.py /path/to/Redmoon
+python3 tools/attribute_growth.py
+python3 tools/recovery_inventory.py
+```
+
+Original art, client/server binaries and archives remain outside Git.

@@ -23,6 +23,12 @@ var armor_bonus: int = 0
 var weapon_bonus: int = 0
 var character_id: int = 1
 var mana: int = 50
+var danger: int = 0
+var stamina: int = 2000
+var rest_elapsed: float=0
+var run_distance: float=0
+var run_steps: int=0
+var rules=preload("res://scripts/recovered_combat.gd").new()
 var bounty_claimed: bool = false
 var honor: int = 0
 var monster_metadata: Dictionary={}
@@ -53,6 +59,7 @@ var height: int = 0
 var walkable: Array = []
 var player: Vector2 = Vector2.ZERO
 var enemies: Array = []
+var selected_enemy: Dictionary={}
 var hp: int = PLAYER_HP
 var xp: int = 0
 var level: int = 1
@@ -60,6 +67,9 @@ var potions: int = 5
 var defeated: int = 0
 var attack_cooldown: float = 0.0
 var attack_flash: float = 0.0
+var action_remaining: float=0
+var action_duration: float=.45
+var attack_variant: int=0
 var elapsed: float = 0.0
 var message: String = "Explore a recovered map. Combat rules are provisional."
 var map_states: Dictionary = {}
@@ -161,6 +171,7 @@ func enter_map(id: int, keep_current: bool = true) -> bool:
 				navigation.set_point_solid(Vector2i(x,y))
 	player = find_start(decoded.get("start", entry.get("start", [w / 2, h / 2])))
 	enemies = []
+	selected_enemy={};action_remaining=0
 	if map_states.has(str(id)):
 		restore_map_state(map_states[str(id)])
 	else:
@@ -265,6 +276,7 @@ func tick(delta: float, direction: Vector2) -> void:
 	elapsed += dt
 	advance_respawns(maxf(0,delta))
 	skills.tick(maxf(0,delta))
+	recover(delta)
 	arrival_grace=maxf(0,arrival_grace-dt)
 	if not skills.can_move():direction=Vector2.ZERO
 	if skills.ailments.has("slow"):direction*=.5
@@ -273,17 +285,27 @@ func tick(delta: float, direction: Vector2) -> void:
 		facing = facing_for(direction)
 	attack_cooldown = maxf(0.0, attack_cooldown - dt)
 	attack_flash = maxf(0.0, attack_flash - dt)
+	action_remaining=maxf(0,action_remaining-dt)
 	if direction.length_squared() > 0.001:
-		player = move_entity(player, direction.limit_length(1.0) * MOVE_SPEED * skills.factor("haste") * (1.6 if running else 1.0) * dt)
+		var prior: Vector2=player
+		player = move_entity(player, direction.limit_length(1.0) * MOVE_SPEED * maxf(skills.factor("haste"),1.2 if not skills.active("zephyrus").is_empty() else 1) * (1.6 if running and stamina>0 else 1.0) * dt)
+		if running and stamina>0:
+			run_distance+=player.distance_to(prior)
+			while run_distance>=1:
+				run_distance-=1;run_steps+=1;stamina=maxi(0,stamina-int(250.0/sqrt(maxi(1,movement_dexterity()))+.5));rest_elapsed=0
 	for enemy in enemies:
 		if not bool(enemy.get("alive", false)):
 			continue
 		var position := Vector2(float(enemy["x"]), float(enemy["y"]))
+		enemy["action_remaining"]=maxf(0,float(enemy.get("action_remaining",0))-dt)
 		enemy["moving"] = false
 		var distance: float = position.distance_to(player)
 		enemy["cooldown"] = maxf(0.0, float(enemy["cooldown"]) - dt)
 		if not skills.active("disguise").is_empty():continue
 		if float(enemy.get("sleep_time",0))>0 or float(enemy.get("freeze_time",0))>0:continue
+		if float(enemy.get("confuse_time",0))>0:
+			var wandering: Vector2=move_entity(position,Vector2.from_angle(elapsed*2+int(enemy.get("monster_id",0)))*dt)
+			enemy["x"]=wandering.x;enemy["y"]=wandering.y;enemy["moving"]=true;continue
 		if not skills.active("fear_aura").is_empty() and distance<8:
 			var fleeing: Vector2=move_entity(position,player.direction_to(position)*1.1*dt)
 			enemy["x"]=fleeing.x;enemy["y"]=fleeing.y;enemy["moving"]=true;continue
@@ -311,6 +333,7 @@ func tick(delta: float, direction: Vector2) -> void:
 			enemy["x"] = position.x
 			enemy["y"] = position.y
 		elif distance <= 1.6 and float(enemy["cooldown"]) <= 0.0 and clear_sight(position,player) and arrival_grace<=0:
+			enemy["action_remaining"]=.55;enemy["facing"]=facing_for(position.direction_to(player))
 			if float(enemy.get("blind_time",0))<=0:receive_damage(4,enemy,false)
 			enemy["cooldown"] = 1.4
 	if hp <= 0 and adventure_started:
@@ -358,13 +381,22 @@ func attack() -> bool:
 	if target.is_empty():
 		message = "Move closer to a creature to attack."
 		return false
+	if not selected_enemy.is_empty() and enemies.has(selected_enemy) and bool(selected_enemy.get("alive",false)):
+		var marked_position:=Vector2(selected_enemy["x"],selected_enemy["y"])
+		if player.distance_to(marked_position)<weapon_range() and clear_sight(player,marked_position):target=selected_enemy
+	facing=facing_for(player.direction_to(Vector2(target["x"],target["y"])))
+	start_attack_animation(skills.basic_attack_delay())
 	skills.break_disguise()
-	damage_enemy(target,maxi(1,int((12+weapon_bonus+(level-1)*2)*skills.factor("attack_up"))))
+	damage_enemy(target,maxi(1,int((12+weapon_bonus+(level-1)*2)*skills.factor("attack_up")*skills.physical_factor())))
 	return true
+
+func start_attack_animation(duration: float=.45) -> void:
+	action_duration=maxf(.2,duration);action_remaining=action_duration;attack_variant=1-attack_variant;rest_elapsed=0
 
 func damage_enemy(target: Dictionary,amount: int) -> void:
 	if not bool(target.get("alive",false)):return
 	if float(target.get("weaken_time",0))>0:amount=int(ceil(amount/0.75))
+	if float(target.get("expose_time",0))>0:amount=int(ceil(amount/.7))
 	target["sleep_time"]=0
 	target["hp"]=maxi(0,int(target["hp"])-amount)
 	if int(target["hp"]) <= 0:
@@ -385,34 +417,29 @@ func damage_enemy(target: Dictionary,amount: int) -> void:
 					var key: String = "%d:%d" % [drops[0]["kind"], drops[0]["index"]]
 					inventory[key] = int(inventory.get(key,0)) + 1
 				break
-		xp += 10
-		if xp >= level * 40:
-			xp -= level * 40
-			level += 1
-			bonus_points += 3 if level%100==0 else 2
-			hp = max_hp()
-			potions += 1
-			message = "Level %d · +%d stat points. Open BAG → CHARACTER." % [level,3 if level%100==0 else 2]
-		else:
-			message = "Creature %d defeated · +10 prototype XP" % int(target["monster_id"])
+		var previous_level: int=level
+		var gain: int=award_experience(int(monster_metadata.get(int(target["monster_id"]),{}).get("experience",0)))
+		if level==previous_level:message="Creature %d defeated · +%d XP" % [int(target["monster_id"]),gain]
 	else:
 		message = "Hit creature %d" % int(target["monster_id"])
 
 	if int(target["hp"])<=0:story.on_defeat(int(target["monster_id"]))
 
-func receive_damage(amount: int,attacker: Dictionary={},psychic: bool=false) -> void:
+func receive_damage(amount: int,attacker: Dictionary={},psychic: bool=false,direct: bool=false) -> void:
 	if amount<=0 or hp<=0:return
-	if not psychic and not skills.active("hide").is_empty():
+	if float(attacker.get("expose_time",0))>0:amount=maxi(1,int(amount*.7))
+	if not direct and not psychic and not skills.active("hide").is_empty():
 		message="Hide avoided a physical attack.";return
 	if skills.absorb_decoy():return
-	if not psychic:amount=maxi(1,amount-armor_bonus)
-	amount=maxi(1,int(ceil(amount*skills.factor("barrier"))))
-	if not skills.active("mana_shield").is_empty():
+	if not direct and not psychic:amount=maxi(1,amount-armor_bonus)
+	if not direct:amount=maxi(1,int(ceil(amount*skills.factor("barrier"))))
+	if not direct and not skills.active("mana_shield").is_empty():
 		var absorbed: int=mini(mana,amount);mana-=absorbed;amount-=absorbed
 	if amount>0 and skills.ailments.has("sleep"):
 		skills.ailments.erase("sleep");skills.control_grace=2.0
 	var lost: int=mini(hp,amount)
 	hp=maxi(0,hp-amount)
+	danger=mini(max_danger(),danger+amount)
 	if psychic and lost>0 and not skills.active("psychic_reflect").is_empty() and enemies.has(attacker) and bool(attacker.get("alive",false)):
 		# Offline reflection uses actual HP loss, after shields, with no recursion.
 		damage_enemy(attacker,lost)
@@ -455,7 +482,7 @@ func restore_map_state(state: Dictionary) -> void:
 
 func save_game(path: String = "user://progress.json") -> Error:
 	remember_map()
-	var record: Dictionary = {"story":story.serialize(),"honor":honor,"skills":skills.serialize(),"roster_version":2,"player_name":player_name,"adventure_started":adventure_started,"tutorial_stage":tutorial_stage,"tutorial_kills":tutorial_kills,"visited":visited,"bank_gold":bank_gold,"version": SAVE_VERSION, "map_id": map_id, "hp": hp, "xp": xp, "level": level, "potions": potions, "defeated": defeated, "map_states": map_states, "stats":stats,"bonus_points":bonus_points,"equipment":equipment,"purchases":purchases,"facing":facing,"armor_bonus":armor_bonus,"gold":gold,"inventory":inventory,"weapon_bonus":weapon_bonus,"character_id":character_id,"mana":mana,"bounty_claimed":bounty_claimed}
+	var record: Dictionary = {"attribute_growth_version":1,"stamina":stamina,"rest_elapsed":rest_elapsed,"progression_version":2,"danger":danger,"story":story.serialize(),"honor":honor,"skills":skills.serialize(),"roster_version":2,"player_name":player_name,"adventure_started":adventure_started,"tutorial_stage":tutorial_stage,"tutorial_kills":tutorial_kills,"visited":visited,"bank_gold":bank_gold,"version": SAVE_VERSION, "map_id": map_id, "hp": hp, "xp": xp, "level": level, "potions": potions, "defeated": defeated, "map_states": map_states, "stats":stats,"bonus_points":bonus_points,"equipment":equipment,"purchases":purchases,"facing":facing,"armor_bonus":armor_bonus,"gold":gold,"inventory":inventory,"weapon_bonus":weapon_bonus,"character_id":character_id,"mana":mana,"bounty_claimed":bounty_claimed}
 	var temporary: String = path + ".tmp"
 	var file := FileAccess.open(temporary, FileAccess.WRITE)
 	if file == null:
@@ -493,7 +520,16 @@ func load_game(path: String = "user://progress.json") -> bool:
 	hp = clampi(int(saved.get("hp", PLAYER_HP)), 1, max_hp())
 	level = clampi(int(saved.get("level", 1)), 1, 1000)
 	bonus_points=maxi(0,int(saved.get("bonus_points",2*(level-1)+level/100)))
-	xp = clampi(int(saved.get("xp", 0)), 0, level * 40 - 1)
+	xp = clampi(int(saved.get("xp", 0)), 0, xp_required()-1)
+	var progression: Variant=saved.get("progression_version",1)
+	if not valid_number(progression) or int(progression)<2:xp=mini(xp_required()-1,int(float(saved.get("xp",0))/maxi(1,level*40)*xp_required()))
+	var saved_stamina: Variant=saved.get("stamina",2000)
+	stamina=clampi(int(saved_stamina),0,2000) if valid_number(saved_stamina) else 2000
+	var prior_rest: Variant=saved.get("rest_elapsed",0)
+	rest_elapsed=clampf(float(prior_rest),0,10) if valid_number(prior_rest) else 0
+	run_steps=0;run_distance=0
+	var saved_danger: Variant=saved.get("danger",0)
+	danger=clampi(int(saved_danger),0,max_danger()) if valid_number(saved_danger) else 0
 	potions = clampi(int(saved.get("potions", 5)), 0, 9999)
 	defeated = maxi(0, int(saved.get("defeated", 0)))
 	armor_bonus = clampi(int(saved.get("armor_bonus",0)),0,3)
@@ -503,6 +539,9 @@ func load_game(path: String = "user://progress.json") -> bool:
 	if int(saved.get("roster_version",1))<2:
 		if character_id==6:character_id=7
 		elif character_id==7:character_id=6
+	var growth_version: Variant=saved.get("attribute_growth_version",0)
+	if bool(saved.get("adventure_started",false)) and (not valid_number(growth_version) or int(growth_version)<1):
+		for attribute in ["strength","spirit","dexterity","power"]:stats[attribute]=mini(4294967295,10+maxi(0,int(stats[attribute])-10)*stat_gain(attribute))
 	mana = clampi(int(saved.get("mana",50)),0,max_mana())
 	honor=clampi(int(saved.get("honor",0)),-10000,10000)
 	skills.restore(saved.get("skills",{}) if saved.get("skills",{}) is Dictionary else {})
@@ -582,7 +621,7 @@ func valid_save(saved: Variant) -> bool:
 	return true
 
 func reset_progress(path: String = "user://progress.json") -> void:
-	honor=0;skills.reset();story.reset()
+	honor=0;danger=0;stamina=2000;rest_elapsed=0;run_steps=0;run_distance=0;skills.reset();story.reset()
 	for suffix in ["", ".bak", ".tmp"]:
 		if FileAccess.file_exists(path+suffix): DirAccess.remove_absolute(path+suffix)
 	map_states = {}
@@ -883,9 +922,23 @@ func map_exit_rectangles() -> Array:
 
 func effective_stat(attribute: String) -> int:
 	var value: int=int(stats.get(attribute,90))
+	if attribute=="power" and not skills.active("berserker").is_empty():value/=2
 	for key in equipment.values():
 		value+=int(item_metadata.get(key,{}).get(attribute,0))
 	return value & 0xffffffff
+
+func stat_gain(attribute: String) -> int:
+	var index: int=["strength","spirit","dexterity","power"].find(attribute)
+	return int(rules.GROWTH[server_hero()][index]) if index>=0 else 0
+
+func preview_stat(attribute: String,changes: Dictionary) -> int:
+	var base: int=int(stats.get(attribute,10))+int(changes.get(attribute,0))*stat_gain(attribute)
+	if attribute=="power" and not skills.active("berserker").is_empty():base/=2
+	for key in equipment.values():base+=int(item_metadata.get(key,{}).get(attribute,0))
+	return base & 0xffffffff
+
+func movement_dexterity() -> int:
+	return effective_stat("dexterity")+(effective_stat("spirit")/4 if not skills.active("nimble").is_empty() else 0)
 
 func hp_for(power: int) -> int:
 	return maxi(1,(50+(power/15)*(power/10)) & 0xffffffff)
@@ -896,17 +949,46 @@ func mana_for(spirit: int) -> int:
 
 func max_hp() -> int: return hp_for(effective_stat("power"))
 func max_mana() -> int: return mana_for(effective_stat("spirit"))
+func max_danger() -> int:return rules.danger_max(effective_stat("power"))
+func map_item_destination(key: String) -> int:
+	return {"5:93":1,"5:94":21,"5:95":29,"5:96":2,"5:97":0,"5:98":3,"5:99":37,"5:100":38,"5:101":39,"5:102":36,"5:103":71}.get(key,-1)
+func xp_required() -> int:return rules.required_xp(level)
+
+func award_experience(amount: int,divisor: int=10) -> int:
+	if level>=1000 or amount<=0:return 0
+	# Normal solo kill path caps the award to 1/10 of this level's requirement.
+	var gain: int=mini(amount,xp_required()/maxi(1,divisor))
+	if gain<=0:return 0
+	xp+=gain
+	if xp>=xp_required():
+		# Original DoLevelUp resets XP instead of carrying overflow to next level.
+		xp=0;level+=1;bonus_points+=3 if level%100==0 else 2
+		hp=max_hp();mana=max_mana();story.update()
+		message="Level %d · +%d stat points. Open BAG → CHARACTER." % [level,3 if level%100==0 else 2]
+	return gain
+
+func recover(delta: float) -> void:
+	if hp<=0:return
+	rest_elapsed+=clampf(delta,0,60)
+	while rest_elapsed>=10:
+		rest_elapsed-=10
+		if stamina<2000:
+			var root_power: int=int(sqrt(maxi(0,effective_stat("power")))+.5)
+			var recovery: int=0 if run_steps>40 else 300+4*root_power-(75+root_power)*run_steps*4/25
+			stamina=clampi(stamina+recovery,0,2000);run_steps=0
+		elif hp<max_hp():hp=mini(max_hp(),hp+max_hp()/10*(2 if character_id==0 else 1))
+		elif mana<max_mana():mana=mini(max_mana(),mana+max_mana()/10)
 
 func allocate_stats(changes: Dictionary, path: String="user://progress.json") -> bool:
 	var total: int=0
 	for key in changes:
 		var value: Variant=changes[key]
 		if not stats.has(key) or not valid_number(value) or float(value)<0 or float(value)!=floor(float(value)) or float(value)>bonus_points: return false
-		if int(stats[key])+int(value)>4294967295: return false
+		if int(stats[key])+int(value)*stat_gain(key)>4294967295: return false
 		total+=int(value)
 	if total<=0 or total>bonus_points: return false
 	var before:=stats.duplicate();var points: int=bonus_points
-	for key in changes: stats[key]=int(stats[key])+int(changes[key])
+	for key in changes: stats[key]=int(stats[key])+int(changes[key])*stat_gain(key)
 	bonus_points-=total
 	if save_game(path)!=OK:
 		stats=before;bonus_points=points;message="Could not save stat changes. Points were kept.";return false
@@ -914,12 +996,7 @@ func allocate_stats(changes: Dictionary, path: String="user://progress.json") ->
 	return true
 
 func allocate_stat(attribute: String) -> bool:
-	if bonus_points<=0 or not stats.has(attribute):
-		return false
-	stats[attribute]=int(stats[attribute])+1
-	bonus_points-=1
-	save_game()
-	return true
+	return allocate_stats({attribute:1})
 
 
 func map_name(id: int = -1) -> String:
@@ -936,7 +1013,7 @@ func create_character(chosen_name: String, hero: int, path: String="user://progr
 	# Preserve the previous save/backup until the new adventure is saved atomically.
 	map_states={};inventory={"4:1":5,"5:93":1,"5:94":1,"5:95":1};equipment={};purchases={}
 	stats={"strength":10,"spirit":10,"dexterity":10,"power":10}
-	honor=0;skills.reset();story.reset()
+	honor=0;danger=0;stamina=2000;rest_elapsed=0;run_steps=0;run_distance=0;skills.reset();story.reset()
 	bonus_points=0;level=1;xp=0;gold=0;bank_gold=0;defeated=0;potions=5
 	weapon_bonus=0;armor_bonus=0;bounty_claimed=false;character_id=hero;player_name=clean
 	adventure_started=true;tutorial_stage=0;tutorial_kills=0;visited=[]

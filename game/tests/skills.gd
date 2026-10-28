@@ -12,7 +12,7 @@ func run() -> void:
 	var w=load("res://scripts/world.gd").new();check(w.initialize(),"real content loads")
 	reset(w)
 	check(w.skills.catalog.size()==114,"all 114 original player skills loaded")
-	w.skills.ensure_slots();check(w.skills.slots==[11,-1,0],"Azlar starts with Psychic Shock and training alternative")
+	w.skills.ensure_slots();check(w.skills.slots==[11,-1,101],"Azlar starts with Psychic Shock and training alternative")
 	check(w.skills.cast(11) and w.mana==97 and w.enemies[0]["hp"]==9982,"Psychic Shock uses original 7% maximum mana and 150% multiplier")
 	var mana: int=w.mana;check(not w.skills.cast(11) and w.mana==mana,"repeated input cannot bypass recovery")
 	reset(w);w.enemies=[];check(not w.skills.cast(11) and w.mana==104,"no target does not consume mana or start recovery")
@@ -64,9 +64,12 @@ func run() -> void:
 		if row["mode"]=="pending":continue
 		reset(w,int(row["hero"]));w.level=1000;w.honor=int(row["honor"]);w.stats["spirit"]=15000;w.mana=w.max_mana();w.hp=1
 		var weapons: Dictionary={"sword":"1:1","spear":"1:83","bow":"1:33","gun":"1:52","firearm":"1:52"}
+		if row["mode"]=="warp":
+			check(w.skills.cast(int(row["id"]),w.player+Vector2(.2,0)),"supported original warp executes");count+=1;continue
+		if row["mode"]=="danger_attack":w.danger=w.max_danger()
 		if row["mode"]=="cleanse":w.skills.ailments={"root":3.0}
 		if row["weapon"]!="":w.equipment={"weapon":weapons[row["weapon"]]}
 		check(w.skills.cast(int(row["id"])),"supported original skill executes: "+row["name"]);count+=1
-	check(count==74,"all 74 admitted skills exercised")
+	check(count==95,"all 95 admitted skills exercised")
 	for suffix in ["", ".bak"]:DirAccess.remove_absolute(path+suffix)
 	print("SKILLS: %d checks, %d failures" % [checks,failures]);quit(1 if failures else 0)

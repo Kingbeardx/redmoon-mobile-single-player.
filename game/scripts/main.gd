@@ -36,6 +36,11 @@ var stats: Label
 var location_label: Label
 var help_label: Label
 var hp_text: Label
+var dp_text: Label
+var run_button: Button
+var aiming_skill: int=0
+var aiming_map: int=-1
+var dp_bar: ProgressBar
 var mp_text: Label
 var xp_bar: ProgressBar
 var mp_bar: ProgressBar
@@ -142,6 +147,11 @@ func _build_ui() -> void:
 	for state in ["background","fill"]:
 		var skin=xp_bar.get_theme_stylebox(state).duplicate();skin.content_margin_top=0;skin.content_margin_bottom=0;skin.content_margin_left=0;skin.content_margin_right=0;skin.set_border_width_all(0);xp_bar.add_theme_stylebox_override(state,skin)
 	hp_bar.add_theme_stylebox_override("fill",_style(Color("b92c45"),Color("ee7582"),8));mp_bar.add_theme_stylebox_override("fill",_style(Color("197b9f"),Color("73d4e1"),8))
+	dp_bar=ProgressBar.new();dp_bar.show_percentage=false;dp_bar.mouse_filter=Control.MOUSE_FILTER_IGNORE;dp_bar.add_theme_stylebox_override("background",_style(Color("171921"),Color("342e2d"),6));dp_bar.add_theme_stylebox_override("fill",_style(Color("a05bcb"),Color("d8a7ef"),6));root_ui.add_child(dp_bar)
+	dp_text=_label("",24);dp_text.add_theme_font_size_override("font_size",24);dp_text.horizontal_alignment=HORIZONTAL_ALIGNMENT_CENTER
+	run_button=_button("WALK",Color("25212a"));run_button.add_theme_font_size_override("font_size",24)
+	run_button.pressed.connect(func():
+		if not OS.has_feature("mobile"):world.running=not world.running;_update_ui())
 	hp_text=_label("",24);mp_text=_label("",24)
 	for label in [hp_text,mp_text]:label.add_theme_font_size_override("font_size",26);label.horizontal_alignment=HORIZONTAL_ALIGNMENT_CENTER
 	location_label=_label("",24);location_label.horizontal_alignment=HORIZONTAL_ALIGNMENT_CENTER
@@ -179,10 +189,12 @@ func _action(title: String,icon: String,color: Color) -> Button:
 
 func _layout() -> void:
 	var view: Vector2=get_viewport_rect().size;root_ui.size=view
-	root_ui.get_node("HealthCard").position=Vector2(20,18);root_ui.get_node("HealthCard").size=Vector2(370,126)
+	root_ui.get_node("HealthCard").position=Vector2(20,18);root_ui.get_node("HealthCard").size=Vector2(370,160)
 	root_ui.get_node("Portrait").position=Vector2(28,26);root_ui.get_node("Portrait").size=Vector2(66,104)
 	stats.position=Vector2(106,20);stats.size=Vector2(276,35)
-	xp_bar.position=Vector2(106,135);xp_bar.size=Vector2(270,4)
+	dp_bar.position=Vector2(106,134);dp_bar.size=Vector2(270,27);dp_text.position=dp_bar.position;dp_text.size=dp_bar.size
+	run_button.position=Vector2(20,view.y-250);run_button.size=Vector2(182,50)
+	xp_bar.position=Vector2(106,169);xp_bar.size=Vector2(270,4)
 	hp_bar.position=Vector2(106,58);hp_bar.size=Vector2(270,32);hp_text.position=hp_bar.position;hp_text.size=hp_bar.size
 	mp_bar.position=Vector2(106,100);mp_bar.size=Vector2(270,26);mp_text.position=mp_bar.position;mp_text.size=mp_bar.size
 	location_label.position=Vector2(408,22);location_label.size=Vector2(maxf(180,view.x-884),42);location_label.clip_text=true
@@ -197,8 +209,8 @@ func _layout() -> void:
 	food_button.position=Vector2(view.x-482,view.y-128);food_button.size=Vector2(100,100)
 	for index in range(extra_skill_buttons.size()):
 		extra_skill_buttons[index].position=Vector2(view.x-254-index*114,view.y-242);extra_skill_buttons[index].size=Vector2(100,100)
-	buff_label.position=Vector2(20,210);buff_label.size=Vector2(370,100)
-	help_label.position=Vector2(20,152);help_label.size=Vector2(370,48)
+	buff_label.position=Vector2(20,242);buff_label.size=Vector2(370,100)
+	help_label.position=Vector2(20,184);help_label.size=Vector2(370,48)
 	status.position=Vector2(view.x*.5-240,view.y-224);status.size=Vector2(480,66)
 	if inventory_panel!=null:inventory_panel.position=Vector2(40,90);inventory_panel.size=Vector2(view.x-80,view.y-114)
 	if root_ui.has_node("BagButton"):root_ui.get_node("BagButton").position=Vector2(view.x-272,20);root_ui.get_node("BagButton").size=Vector2(108,60)
@@ -210,8 +222,10 @@ func _process(delta: float) -> void:
 		return
 	if audio_controller.player!=null:audio_controller.set_map(world.map_id)
 	if ui_blocked():
+		aiming_skill=0
 		world.advance_respawns(delta)
 		world.skills.tick(delta)
+		world.recover(delta)
 		game_ui.refresh_effects()
 		return
 	status_age+=delta
@@ -243,6 +257,8 @@ func _input(event: InputEvent) -> void:
 	if not ready_world or ui_blocked():
 		return
 	if event is InputEventScreenTouch and event.pressed:
+		if run_button.get_global_rect().has_point(event.position):
+			world.running=not world.running;_update_ui();get_viewport().set_input_as_handled();return
 		for index in range(extra_skill_buttons.size()):
 			if extra_skill_buttons[index].get_global_rect().has_point(event.position):
 				_skill(index+1);get_viewport().set_input_as_handled();return
@@ -269,6 +285,7 @@ func _unhandled_key_input(event: InputEvent) -> void:
 	elif event.physical_keycode == KEY_2:_skill(1)
 	elif event.physical_keycode == KEY_3:_skill(2)
 	elif event.physical_keycode == KEY_K:game_ui.show_skills()
+	elif event.physical_keycode == KEY_ESCAPE:aiming_skill=0;world.message="Aiming cancelled.";_update_ui()
 	elif event.physical_keycode == KEY_R:_food()
 	elif event.physical_keycode == KEY_F5:
 		_save()
@@ -324,8 +341,11 @@ func _update_ui() -> void:
 	if audio_controller.player!=null:audio_controller.set_map(world.map_id)
 	if map_select.item_count==0 or map_select.get_item_id(map_select.selected)!=world.map_id:_sync_map_selection()
 	stats.text="%s · Lv %d" % [world.HERO_NAMES[world.character_id],world.level]
-	stats.tooltip_text="XP %d / %d · Gold %d · Stat points %d" % [world.xp,world.level*40,world.gold,world.bonus_points]
-	xp_bar.max_value=world.level*40;xp_bar.value=world.xp
+	run_button.text=("RUN" if world.running else "WALK")+" · SP %d%%" % (world.stamina/20)
+	stats.tooltip_text="XP %d / %d · Gold %d · Stat points %d" % [world.xp,world.xp_required(),world.gold,world.bonus_points]
+	xp_bar.max_value=world.xp_required();xp_bar.value=world.xp
+	dp_bar.max_value=world.max_danger();dp_bar.value=world.danger;dp_text.text="DP %d%%" % (world.danger*100/world.max_danger())
+	if world.danger>=world.max_danger():dp_text.text="DP · SPECIAL READY"
 	hp_bar.max_value=world.max_hp();hp_bar.value=world.hp;mp_bar.max_value=world.max_mana();mp_bar.value=world.mana
 	hp_text.text="HP %d / %d" % [world.hp,world.max_hp()];mp_text.text="MP %d / %d" % [world.mana,world.max_mana()]
 	location_label.text=world.map_name()
@@ -343,8 +363,8 @@ func _update_ui() -> void:
 		if row.get("mode","")=="hide" and not world.skills.active("hide").is_empty():button.caption.text="END HIDE"
 		button.picture.texture=game_ui.skill_texture(id)
 		button.tooltip_text=str(row.get("name","Choose a skill"))+" · Open BAG → SKILLS to assign"
-		button.disabled=id!=0 and (world.skills.requirement(id)!="Ready" or world.mana<world.skills.cost(id))
-		button.set_state(str(world.skills.cost(id)) if id!=0 else "+",maxf(cooldown,float(world.skills.cooldowns.get(id,0))/world.skills.RECOVERY))
+		button.disabled=id!=0 and (world.skills.requirement(id)!="Ready" or not world.skills.has_resource(id))
+		button.set_state(("DP" if row.get("mode","")=="danger_attack" else str(world.skills.cost(id))) if id!=0 else "+",maxf(cooldown,float(world.skills.cooldowns.get(id,0))/world.skills.RECOVERY))
 	var active: PackedStringArray=[]
 	for name in world.skills.ailments:active.append("%s · %ds" % [str(name).to_upper(),int(ceil(world.skills.ailments[name]))])
 	for buff in world.skills.buffs.values():active.append("%s · %ds%s" % [buff["name"],int(ceil(buff["remaining"]))," · %d hits" % int(buff["charges"]) if buff.has("charges") else ""])
@@ -364,6 +384,11 @@ func _skill(slot: int=0) -> void:
 	_cast_skill_id(int(world.skills.slots[slot]))
 
 func _cast_skill_id(id: int) -> void:
+	if world.skills.entry(id).get("mode","")=="warp":
+		if aiming_skill==id:aiming_skill=0;world.message="Warp cancelled."
+		elif world.skills.requirement(id)=="Ready" and world.skills.has_resource(id):aiming_skill=id;aiming_map=world.map_id;pending_npc.clear();npc_path.clear();world.message="WARP · Tap a visible open tile. Tap Warp again to cancel."
+		else:world.message="Warp is not ready. Check its level, honor and mana requirements."
+		_update_ui();return
 	if world.skills.cast(id):play_sound("heal" if world.skills.entry(id).get("mode")=="heal" else "attack")
 	_update_ui()
 
@@ -418,7 +443,7 @@ func _draw() -> void:
 	for npc in world.content.get("npcs", []):
 		if int(npc.get("map_id", -1)) == world.map_id:
 			var b: Dictionary = npc["bounds"]
-			entities.append({"position": Vector2((float(b["left"])+float(b["right"]))*0.5, (float(b["top"])+float(b["bottom"]))*0.5), "player": false, "enemy": {"npc":true,"npc_name":str(npc["name"]).trim_prefix("+"),"monster_id":0,"appearance":int(npc["image_id"])}})
+			entities.append({"position": world.npc_position(npc), "player": false, "enemy": {"npc":true,"npc_name":str(npc["name"]).trim_prefix("+"),"monster_id":0,"appearance":int(npc["image_id"])}})
 	for exit in world.map_exit_rectangles():
 		entities.append({"position":Vector2((float(exit["left"])+float(exit["right"]))/96.0,(float(exit["top"])+float(exit["bottom"]))/48.0),"player":false,"exit":true})
 	entities.append({"position": world.player, "player": true})
@@ -434,7 +459,7 @@ func _draw() -> void:
 			_draw_image(str(entry["object"]),point-TILE*0.5)
 		else:
 			_draw_actor(point, bool(entry["player"]), entry.get("enemy", {}))
-	if world.attack_flash > 0.0:
+	if world.attack_flash > 0.0 and not art.get("actor_states",{}).get(str(world.server_hero()),{}).has("attack"):
 		var point: Vector2 = iso(world.player) + camera_origin
 		var alpha: float = world.attack_flash / 0.18
 		draw_arc(point + Vector2(0, -8), 35 + (1.0 - alpha) * 22, -PI * 0.9, PI * 0.15, 24, Color(1.0, 0.74, 0.5, alpha), 4, true)
@@ -455,6 +480,7 @@ func _draw() -> void:
 	_draw_minimap(screen)
 
 func _draw_actor(point: Vector2, is_player: bool, enemy: Dictionary) -> void:
+	if not is_player and not enemy.is_empty() and enemy==world.selected_enemy:draw_arc(point,23,0,TAU,40,Color.GOLD,2,true)
 	if enemy.get("npc", false):
 		draw_string(ThemeDB.fallback_font, point + Vector2(-35,-65), str(enemy.get("npc_name","NPC")), HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color.GOLD)
 	if not is_player and not enemy.get("npc",false):
@@ -471,12 +497,16 @@ func _draw_actor(point: Vector2, is_player: bool, enemy: Dictionary) -> void:
 	if not sequences.is_empty():
 		var frames: Array = sequences[0]
 		var moving: bool = world.motion.length_squared()>0.01 if is_player else bool(enemy.get("moving",false))
-		var state: String = ("run" if world.running else "walk") if moving and is_player else ("walk" if moving else "idle")
+		var state: String = ("run" if world.running and world.stamina>0 else "walk") if moving and is_player else ("walk" if moving else "idle")
+		var action_time: float=world.action_remaining if is_player else float(enemy.get("action_remaining",0))
+		if action_time>0:state="attack_alt" if is_player and world.attack_variant==1 else "attack"
 		var facing: int = world.facing if is_player else int(enemy.get("facing",6))
 		var action_frames: Array = art.get("actor_states",{}).get(str(appearance),{}).get(state,{}).get(str(facing),[])
+		if action_frames.is_empty() and state=="attack_alt":action_frames=art.get("actor_states",{}).get(str(appearance),{}).get("attack",{}).get(str(facing),[])
 		if not action_frames.is_empty():
 			frames = action_frames
 		var frame: int = int(world.elapsed / 0.06) % frames.size()
+		if action_time>0:frame=mini(frames.size()-1,int((1-action_time/(world.action_duration if is_player else .55))*frames.size()))
 		var key: String = frames[frame]
 		var tint: Color=Color(0.7,0.75,0.9,.55) if is_player and not world.skills.active("hide").is_empty() else Color.WHITE
 		_draw_image(key, point,tint)
@@ -686,8 +716,23 @@ func _unhandled_input(event: InputEvent) -> void:
 	if (event is InputEventScreenTouch and event.pressed) or (event is InputEventMouseButton and event.pressed and event.button_index==MOUSE_BUTTON_LEFT):
 		for action in [attack_button,heal_button,skill_button,food_button]+extra_skill_buttons:
 			if action.get_global_rect().has_point(event.position):return
+		if aiming_skill!=0:
+			if aiming_map!=world.map_id:aiming_skill=0;return
+			var destination: Vector2=(event.position/world_zoom-camera_origin)/TILE
+			if world.skills.cast(aiming_skill,destination):aiming_skill=0;world.save_game();play_sound("attack")
+			_update_ui();queue_redraw();get_viewport().set_input_as_handled();return
 		var npc:=npc_at_screen(event.position)
-		if npc.is_empty():return
+		if npc.is_empty():
+			var best: float=INF;var chosen: Dictionary={}
+			for enemy in world.enemies:
+				if not bool(enemy.get("alive",false)):continue
+				var anchor: Vector2=(iso(Vector2(enemy["x"],enemy["y"]))+camera_origin)*world_zoom
+				var rect:=Rect2(anchor+Vector2(-32,-80)*world_zoom,Vector2(64,96)*world_zoom)
+				var distance: float=event.position.distance_squared_to(rect.get_center())
+				if rect.has_point(event.position) and distance<best:best=distance;chosen=enemy
+			world.selected_enemy=chosen
+			if not chosen.is_empty():world.message="Target: "+str(chosen.get("name","Creature"))+" · Tap Attack or a skill."
+			_update_ui();queue_redraw();return
 		if world.npc_position(npc).distance_to(world.player)<8:game_ui.open_dialogue(npc)
 		else:
 			pending_npc=npc.duplicate(true);npc_path.clear();npc_repath=0

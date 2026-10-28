@@ -40,9 +40,9 @@ func _initialize() -> void:
 	world.attack()
 	world.attack_cooldown = 0.0
 	world.attack()
-	verify(world.defeated == 1 and world.xp == 10, "Defeat awards prototype XP once")
+	verify(world.defeated == 1 and world.xp == 2, "Defeat awards source XP with original per-level cap once")
 	world.attack_cooldown = 0.0
-	verify(not world.attack() and world.xp == 10, "Dead enemies cannot award XP twice")
+	verify(not world.attack() and world.xp == 2, "Dead enemies cannot award XP twice")
 	world.hp = 50
 	verify(world.heal() and world.hp == 95 and world.potions == 4, "Heal consumes inventory and restores health")
 	var path: String = "user://smoke-save.json"

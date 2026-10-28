@@ -174,3 +174,20 @@ New combat coverage includes physical versus psychic damage, zero-MP Hide ending
 source timer paths, strongest-only speed stacking, shield spill, lethal reflection,
 ordinary defeat rewards and saved/expired stances. Static evidence is regenerated
 by `python3 tools/stance_evidence.py`.
+
+## v0.15 validation
+
+644 Godot checks across 26 scripts and 64 Python/rule checks passed. The rendered
+GUI tests exercise DP specials, the Walk/Run toggle, ground-targeted Warp, creature
+selection, map-item previews, class stat previews and the complete first story
+chapter. Regression coverage includes creation, gear, inventory, existing skills,
+monster casting, audio PCM capture, persistence and accessibility scaling.
+
+Native constructor MOV interpretation validates all 36 class-growth coefficients.
+New tests cover the DP branch boundary, source damage base, XP caps/level reset,
+class growth and one-time old-save conversion, SP/rest ordering, poison/shields,
+rush paths, support effects and updated UI behavior. The APK is separately checked
+for ZIP integrity, matching update certificate, package/version, original payload
+references and absence of Internet permission. No physical Android device or iOS
+build was tested. Build metadata and the measured input-gap report accompany the
+source backup; the player ZIP includes the APK and Missing-Files.txt.

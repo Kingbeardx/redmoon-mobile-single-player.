@@ -45,6 +45,7 @@ func cast(enemy: Dictionary,id: int) -> bool:
 	var row: Dictionary=catalog.get(id,{})
 	if row.is_empty() or row["mode"]=="pending" or not bool(enemy.get("alive",false)):return false
 	var mode: String=str(row["mode"])
+	enemy["action_remaining"]=.55
 	if mode=="heal":
 		var maximum: int=int(enemy.get("max_hp",36));var healing: int=maxi(1,maximum*int(row["multiplier"])/100)
 		enemy["hp"]=mini(maximum,int(enemy["hp"])+healing)
@@ -57,6 +58,7 @@ func cast(enemy: Dictionary,id: int) -> bool:
 		else:
 			var source: Dictionary=world.monster_metadata.get(int(enemy.get("monster_id",0)),{})
 			var duration: float=maxf(1,int(row["duration_base"])+int(source.get("spirit",0))/20)
+			if mode=="poison":duration=maxf(1,int(source.get("spirit",0))/30)
 			world.skills.apply_ailment(mode,duration)
 		world.skills.effects.append({"skill_id":id,"start_x":pos.x,"start_y":pos.y,"facing":world.facing_for(pos.direction_to(world.player)),"x":world.player.x,"y":world.player.y,"mode":"hostile","remaining":.65,"label":"ENEMY SKILL"})
 	return true

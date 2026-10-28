@@ -26,8 +26,8 @@ func _initialize() -> void:
 	w.stats["power"]=99
 	w.stats["spirit"]=99
 	w.bonus_points=2
-	check(w.allocate_stat("power") and w.max_hp()==110,"allocated Power applies recovered HP formula")
-	check(w.allocate_stat("spirit") and w.max_mana()==110,"allocated Spirit applies recovered MP formula")
+	check(w.allocate_stat("power") and w.max_hp()==127,"allocated Power applies recovered HP formula")
+	check(w.allocate_stat("spirit") and w.max_mana()==120,"allocated Spirit applies recovered MP formula")
 	check(not w.allocate_stat("strength"),"cannot spend unavailable points")
 	var key: String=""
 	for candidate in w.item_metadata:
@@ -43,11 +43,11 @@ func _initialize() -> void:
 	restored.initialize()
 	check(restored.load_game(path) and restored.stats==w.stats and restored.equipment==w.equipment and restored.weapon_bonus==5,"stats and slotted gear persist")
 	DirAccess.remove_absolute(path);DirAccess.remove_absolute(path+".bak")
-	w.level=1;w.xp=39;w.bonus_points=0;w.attack_cooldown=0
+	w.level=1;w.xp=w.xp_required()-1;w.bonus_points=0;w.attack_cooldown=0
 	w.enemies=[{"monster_id":1,"x":w.player.x,"y":w.player.y,"hp":1,"alive":true}]
 	w.attack()
 	check(w.level==2 and w.bonus_points==2,"ordinary level gives recovered two points")
-	w.level=99;w.xp=3959;w.bonus_points=0;w.attack_cooldown=0
+	w.level=99;w.xp=w.xp_required()-1;w.bonus_points=0;w.attack_cooldown=0
 	w.enemies=[{"monster_id":1,"x":w.player.x,"y":w.player.y,"hp":1,"alive":true}]
 	w.attack()
 	check(w.level==100 and w.bonus_points==3,"hundredth level gives recovered three points")

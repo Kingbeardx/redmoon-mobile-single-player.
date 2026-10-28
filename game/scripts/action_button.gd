@@ -15,12 +15,13 @@ func setup(title: String,texture: Texture2D,color: Color) -> void:
 	picture=TextureRect.new();picture.texture=texture;picture.expand_mode=TextureRect.EXPAND_IGNORE_SIZE;picture.stretch_mode=TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 	picture.mouse_filter=Control.MOUSE_FILTER_IGNORE;add_child(picture)
 	caption=Label.new();caption.text=title;caption.horizontal_alignment=HORIZONTAL_ALIGNMENT_CENTER;caption.add_theme_font_size_override("font_size",24);caption.mouse_filter=Control.MOUSE_FILTER_IGNORE;add_child(caption)
+	caption.vertical_alignment=VERTICAL_ALIGNMENT_CENTER;caption.max_lines_visible=2;caption.clip_text=true;caption.text_overrun_behavior=TextServer.OVERRUN_TRIM_ELLIPSIS
 	badge=Label.new();badge.horizontal_alignment=HORIZONTAL_ALIGNMENT_CENTER;badge.add_theme_font_size_override("font_size",20);badge.add_theme_color_override("font_color",Color("f8d68e"));badge.mouse_filter=Control.MOUSE_FILTER_IGNORE;add_child(badge)
 	resized.connect(layout);layout()
 func layout() -> void:
 	if picture==null:return
-	picture.position=Vector2(size.x*.27,14);picture.size=Vector2(size.x*.46,size.y*.46)
-	caption.position=Vector2(0,size.y*.60);caption.size=Vector2(size.x,44)
+	picture.position=Vector2(size.x*.29,10);picture.size=Vector2(size.x*.42,size.y*.42)
+	caption.position=Vector2(0,size.y*.52);caption.size=Vector2(size.x,size.y*.46)
 	badge.position=Vector2(size.x*.58,2);badge.size=Vector2(size.x*.4,28)
 func set_state(label_text: String,remaining: float) -> void:
 	badge.text=label_text;cooldown=clampf(remaining,0,1);picture.modulate=Color(1,1,1,.35) if disabled else Color.WHITE;queue_redraw()

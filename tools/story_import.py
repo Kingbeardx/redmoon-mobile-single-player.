@@ -57,7 +57,7 @@ def build(client,server,game):
             'requirements':{'minimum_level':50,'spy':{'map':74,'monster':90,'item':'5:1'},
                             'esper':{'map':72,'monster':92}},
             'honor_caps':[{'flag':2,'cap':200},{'flag':8,'cap':300},{'flag':64,'cap':400}],
-            'status':'Original text, targets, NPC roles and native flags; missing script glue reconstructed. Quest XP formulas and later chapters not restored.'}
+            'status':'Original text, targets, NPC roles and native flags; missing script glue reconstructed. First-chapter XP formulas recovered from native XP table references; later chapters not restored.'}
 
 if __name__=='__main__':
     p=argparse.ArgumentParser(description=__doc__);p.add_argument('client',type=Path)

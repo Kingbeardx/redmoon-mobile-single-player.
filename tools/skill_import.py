@@ -19,14 +19,28 @@ EXTRA_MODES = {9:'sleep',303:'sleep',86:'sleep',19:'freeze',84:'blind',
                57:'disguise',87:'disguise',35:'fear_aura',
                5:'cleanse',73:'cleanse',16:'purify_guard',22:'purify_guard',
                55:'status_guard',85:'status_guard',311:'status_guard',40:'decoy',43:'taunt',
-               34:'hide',48:'attack_speed',312:'attack_speed',65:'psychic_reflect'}
+               34:'hide',48:'attack_speed',312:'attack_speed',65:'psychic_reflect',
+               64:'warp',25:'rush',45:'rush',47:'berserker',18:'nimble',75:'nimble',
+               77:'attack_up',79:'attack_up',70:'restore',372:'zephyrus',90:'expose',332:'confuse'}
 RUNTIME_NOTES={34:'Avoids physical damage while active; psychic attacks still hurt. Cast again to end Hide.',
                48:'Basic attacks recover 1.5× faster. Speed effects do not stack.',
                312:'Basic attacks recover 2× faster in offline play. Speed effects do not stack.',
-               65:'Returns psychic HP damage to the attacking creature in offline play. Physical attacks are unaffected.'}
+               65:'Returns psychic HP damage to the attacking creature in offline play. Physical attacks are unaffected.',
+               64:'Choose a visible open tile to warp there. Tap the skill again to cancel aiming. Offline reach: 10 tiles.',
+               25:'Rush the nearest visible opponent, striking creatures along your path.',
+               45:'Rush the nearest visible opponent, striking creatures along your path.',
+               47:'Doubles basic and weapon-skill attack power, but halves base Power while active. This reduces maximum HP and DP.',
+               18:'The recovered server effect adds a quarter of Spirit to Dexterity. This reduces running stamina cost in offline play.',
+               75:'Self-cast support adds a quarter of Spirit to Dexterity. Party targets require multiplayer.',
+               77:'Increases your attacks by 20%. Party targets require multiplayer.',
+               79:'Increases your attacks by 20%. Party targets require multiplayer.',
+               70:'Restores your own HP and MP. No other player targets exist in offline play.',
+               372:'Self-cast support increases movement and basic attack speed by 20%. Cannot refresh while active.',
+               90:'Offline exposure reduces a creature\'s damage and defense to 70% while active.',
+               332:'Disorients nearby creatures, making them wander instead of pursuing you.'}
 MONSTER_MODES={0:'damage',1:'heal',2:'root',17:'blind',18:'physical_damage',
                19:'damage',22:'sleep',26:'freeze',38:'slow',70:'damage',
-               71:'damage',72:'damage',73:'damage'}
+               71:'damage',72:'damage',73:'damage',42:'poison'}
 
 def fields(raw):
     if len(raw) != 38:
@@ -78,6 +92,7 @@ def build(server, client):
             elif effect in BUFFS: mode=BUFFS[effect]
             elif effect in DEBUFFS: mode=DEBUFFS[effect]
             if ident in EXTRA_MODES:mode=EXTRA_MODES[ident]
+        elif row['prefix_u8']==1:mode='danger_attack'
         desc=description.replace('\\\\n','\n').replace('\\n','\n')
         weapon=''
         if 'Sword Required' in desc: weapon='sword'
@@ -93,6 +108,7 @@ def build(server, client):
                        'duration_scale':.2 if ident in [22,55,85,40] else 1.0,
                        'duration_spirit_divisor':5 if ident==34 else 10 if ident in [55,85] else 20,
                        'attack_speed':1.5 if ident==48 else 2.0 if ident==312 else 1.0,
+                       'runtime_multiplier':120 if ident in [77,79] else v['multiplier'],
                        'runtime_note':RUNTIME_NOTES.get(ident,''),
                        'message_key':key,'client_differences':differing,
                        'status':'reconstructed' if mode!='pending' else 'reference_only'})
@@ -100,7 +116,7 @@ def build(server, client):
     return {'schema_version':1,'source_sha256':hashlib.sha256(server.read_bytes()).hexdigest(),
             'client_sha256':hashlib.sha256((client/'DATAs/Info/skill00.rmi').read_bytes()).hexdigest(),
             'requirements':'Original 3.8 server; English text and displayed hero IDs from Message.ctf',
-            'runtime_limit':'Damage, cooldown, targeting and status integration use the offline combat model. The first honor-cap chapter is playable; DP, multiplayer, later quests and advanced effects remain incomplete.',
+            'runtime_limit':'Damage, cooldown, targeting and status integration use the offline combat model. The first honor-cap chapter is playable; DP specials and source XP are supported. Multiplayer, later quests and advanced effects remain incomplete.',
             'skills':result,'monster_skills':monsters,
             'summary':{'player_skills':len(result),'reconstructed':len(result)-len(issues),'reference_only':len(issues)}}
 
