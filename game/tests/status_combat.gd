@@ -52,7 +52,7 @@ func _initialize() -> void:
 	w.skills.reset();hp=w.hp;check(w.monster_skills.cast(e,182) and w.hp==hp-10,"original monster physical skill multiplier used on offline base")
 	e["blind_time"]=5;hp=w.hp;w.monster_skills.cast(e,182);check(w.hp==hp,"blind enemy cannot land a physical skill")
 	e.erase("blind_time");e["hp"]=1;w.monster_skills.cast(e,183);check(e["hp"]>1 and e["hp"]<=36,"original monster heal restores bounded health")
-	check(not w.monster_skills.cast(e,203),"summoning script not disguised as basic attack")
+	check(w.monster_skills.cast(e,203),"summoning skill now creates a real reinforcement")
 	var copy: Dictionary=monster(w);copy["x"]=w.player.x+50;hp=w.hp
 	check(not w.monster_skills.cast(copy,184) and w.hp==hp,"monster skill cannot hit beyond source range")
 	hero(w,43);check(w.skills.cast(43) and not w.skills.active("taunt").is_empty(),"Roar creates aggro aura")

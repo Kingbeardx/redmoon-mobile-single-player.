@@ -25,7 +25,7 @@ func run() -> void:
 	w.honor=450;check(w.skills.requirement(10)=="Ready","positive honor threshold allows good branch")
 	check(w.skills.requirement(8).begins_with("Requires honor"),"opposite honor branch blocked")
 	w.honor=-250;check(w.skills.requirement(8)=="Ready","negative honor threshold allows evil branch")
-	check(not w.skills.cast(6),"pending gate is not a fake damage skill")
+	check(w.skills.entry(6)["mode"]=="gate","gate has a real transport implementation")
 	reset(w,0);w.hp=60;check(w.skills.cast(1) and w.hp==104 and w.mana==82,"Cure converts 22 MP to 44 HP")
 	reset(w,0);check(not w.skills.cast(1) and w.mana==104,"full health cure consumes no mana")
 	reset(w);w.level=50;w.enemies.append({"monster_id":5,"x":w.player.x,"y":w.player.y,"hp":10000,"alive":true})
@@ -64,12 +64,15 @@ func run() -> void:
 		if row["mode"]=="pending":continue
 		reset(w,int(row["hero"]));w.level=1000;w.honor=int(row["honor"]);w.stats["spirit"]=15000;w.mana=w.max_mana();w.hp=1
 		var weapons: Dictionary={"sword":"1:1","spear":"1:83","bow":"1:33","gun":"1:52","firearm":"1:52"}
+		if row["mode"] in ["recall","ally_teleport","resurrect"]:
+			w.party.allies.clear();w.party.recruit(0)
+			if row["mode"]=="resurrect":w.party.allies[0]["hp"]=0;w.hp=100
 		if row["mode"]=="warp":
 			check(w.skills.cast(int(row["id"]),w.player+Vector2(.2,0)),"supported original warp executes");count+=1;continue
 		if row["mode"]=="danger_attack":w.danger=w.max_danger()
 		if row["mode"]=="cleanse":w.skills.ailments={"root":3.0}
 		if row["weapon"]!="":w.equipment={"weapon":weapons[row["weapon"]]}
 		check(w.skills.cast(int(row["id"])),"supported original skill executes: "+row["name"]);count+=1
-	check(count==108,"all 108 admitted skills exercised")
+	check(count==114,"all 114 admitted skills exercised")
 	for suffix in ["", ".bak"]:DirAccess.remove_absolute(path+suffix)
 	print("SKILLS: %d checks, %d failures" % [checks,failures]);quit(1 if failures else 0)

@@ -25,7 +25,7 @@ var skill_assign_buttons: Array=[]
 var skill_cast_button: Button
 var effect_text: Label
 const ATTRIBUTES=["strength","spirit","dexterity","power"]
-const DESCRIPTIONS={"strength":"Attack power and equipment requirements", "spirit":"Maximum mana and equipment", "dexterity":"Equipment requirements", "power":"Maximum health and equipment"}
+const DESCRIPTIONS={"strength":"Attack power and equipment requirements", "spirit":"Psychic attack, mana and equipment", "dexterity":"Accuracy, stamina and equipment", "power":"Health, defense, DP and equipment"}
 
 func setup(owner_scene: Node) -> void:
 	scene=owner_scene
@@ -124,13 +124,14 @@ func show_item_detail(parent: Node) -> void:
 	if map_id>=0:action="READ MAP"
 	item_action=button(action,func():
 		if map_id>=0:show_map(map_id);return
+		if equipped and scene.world.request_online("unequip",key):show_bag();return
 		if equipped:
 			for slot in scene.world.equipment.keys():
 				if scene.world.equipment[slot]==key:scene.world.equipment.erase(slot)
 			scene.world.refresh_equipment();scene.world.save_game();scene.world.message="Unequipped "+scene.world.item_name(key)
 		else:scene.world.use_item(key)
 		show_bag(),parent)
-	item_action.disabled=item.is_empty() or (kind not in ["1","2","3","4"] and map_id<0)
+	item_action.disabled=item.is_empty() or (kind not in ["1","2","3","4"] and key!="6:67" and map_id<0)
 	if not equipped and not item.is_empty() and kind in ["1","2","3"] and int(item.get("characters",0))!=0 and (int(item.get("characters",0)) & (1<<scene.world.server_hero()))==0:
 		label("Your hero cannot equip this item.",parent,24);item_action.disabled=true
 	if scene.world.shop_available:
@@ -188,10 +189,14 @@ func change_stat(attribute: String,delta: int) -> void:
 func show_journal() -> void:
 	open_page("JOURNEY & OPTIONS","journal")
 	label(scene.world.objective(),content,30)
+	label("SIGNUS CREDITS: %d · Exchange with a BankClerk." % scene.world.sig_gold,content,24)
 	label("HONOR %+d / ±%d · Creature labels show the change for defeating them." % [scene.world.honor,scene.world.honor_cap()],content,24)
 	var scroll:=ScrollContainer.new();scroll.size_flags_vertical=Control.SIZE_EXPAND_FILL;content.add_child(scroll)
 	var list:=VBoxContainer.new();list.size_flags_horizontal=Control.SIZE_EXPAND_FILL;scroll.add_child(list)
 	button("STORY · "+scene.world.story.title(),show_story,list)
+	button("PARTY, SUPPORT SKILLS & GATES",show_party,list)
+	button("CAMPAIGN CONTINUATION",show_campaign,list)
+	button("LAN CO-OP",show_multiplayer,list)
 	button("SAVE GAME",func():scene._save();show_journal(),list)
 	button("MINIMAP: "+("ON" if scene.minimap_visible else "OFF"),func():scene.minimap_visible=not scene.minimap_visible;scene.queue_redraw();show_journal(),list)
 	button("VIEW AREA MAP",show_map,list)
@@ -228,6 +233,7 @@ func open_dialogue(npc: Dictionary, response: String="") -> void:
 		dialogue_primary=button("BEGIN TRAINING" if scene.world.adventure_started and scene.world.tutorial_stage==0 else ("COMPLETE TRAINING" if scene.world.adventure_started and scene.world.tutorial_stage==3 else "RESTORE HEALTH & MANA"),func():
 			scene.world.interact_with(speaker);open_dialogue(speaker,scene.world.message),content)
 	elif name=="BankClerk":
+		if scene.world.sig_gold>0:button("EXCHANGE SIGNUS CREDITS · 1:1",func():scene.world.exchange_sig_gold();open_dialogue(speaker),content)
 		button("DEPOSIT GOLD",func():scene.world.deposit_gold();open_dialogue(speaker),content)
 		button("WITHDRAW GOLD",func():scene.world.withdraw_gold();open_dialogue(speaker),content)
 	else:
@@ -235,6 +241,8 @@ func open_dialogue(npc: Dictionary, response: String="") -> void:
 		if is_shop:
 			dialogue_primary=button("BROWSE SHOP",func():
 				if scene.world.interact_with(speaker):close();scene.inventory_panel.show();scene._market_rows(),content)
+	if name=="Doctor":button("RECRUIT OR MANAGE ALLIES",show_party,content)
+	if scene.world.story.role(npc)=="kasham" and scene.world.story.complete():button("CAMPAIGN CONTINUATION",show_campaign,content)
 	button("WHAT SHOULD I DO NEXT?",func():open_dialogue(speaker,scene.world.dialogue_guidance(speaker)),content)
 	button("GOODBYE",close,content)
 
@@ -456,3 +464,66 @@ func show_story_dialogue(npc: Dictionary,response: String="") -> void:
 			show_story_dialogue(speaker,quest.last_reply if ok else scene.world.message),body)
 	button("QUEST JOURNAL",show_story,body)
 	button("GOODBYE",close,body)
+
+func show_party() -> void:
+	open_page("PARTY & GATES · RECONSTRUCTED","party")
+	label("Recruit up to two allies. They fight, can fall in battle, and can be recalled, teleported to, or resurrected.",content,25)
+	var scroll:=ScrollContainer.new();scroll.size_flags_vertical=Control.SIZE_EXPAND_FILL;content.add_child(scroll)
+	var rows:=VBoxContainer.new();rows.size_flags_horizontal=Control.SIZE_EXPAND_FILL;scroll.add_child(rows)
+	for index in range(scene.world.party.targets().size()):
+		var slot: int=index;var ally: Dictionary=scene.world.party.targets()[index]
+		button(("SELECTED · " if scene.world.party.selected==index else "SELECT · ")+ally["name"]+" · HP %d/%d" % [ally["hp"],ally["max_hp"]],func():scene.world.party.selected=slot;show_party(),rows)
+		if ally.has("peer"):continue
+		button("DISMISS "+ally["name"],func():scene.world.party.dismiss(slot);scene.world.save_game();show_party(),rows)
+	if scene.world.party.allies.size()<2:
+		for index in range(9):
+			var hero: int=index
+			button("RECRUIT "+scene.world.HERO_NAMES[index],func():scene.world.party.recruit(hero);scene.world.save_game();show_party(),rows)
+	button("RALLY LIVING ALLIES",func():scene.world.party.regroup();show_party(),rows)
+	button("USE DIMENSIONAL GATE",func():
+		if scene.coop.active():scene.coop.request("gate")
+		else:scene.world.party.use_gate()
+		close();scene._sync_map_selection(),rows).disabled=scene.world.party.portal.is_empty()
+	label("GATE DESTINATION",rows,26)
+	for id in scene.world.travel_options():
+		var destination: int=int(id)
+		button(scene.world.journey.get("map_names",{}).get(str(id),"Area %d" % id),func():scene.world.party.set_destination(destination);scene.world.message="Gate destination selected.";close(),rows)
+	button("COMBAT: "+("RECONSTRUCTED" if scene.world.complete_combat else "LEGACY OFFLINE")+" · SWITCH",func():scene.world.set_combat_mode(not scene.world.complete_combat);scene.world.save_game();show_party(),rows).disabled=scene.coop.is_client()
+
+func show_campaign() -> void:
+	open_page("CAMPAIGN CONTINUATION · RECONSTRUCTED","campaign")
+	label("These missions rebuild the missing later story using preserved locations and dialogue leads. Objectives, encounters and ending are newly authored.",content,25)
+	label(scene.world.campaign.title(),content,30)
+	if scene.coop.is_client():label("The host leads campaign missions and travel. Your party shares the objectives.",content,26);return
+	var mission: Dictionary=scene.world.campaign.current()
+	if not mission.is_empty():label(str(mission["brief"]),content,26)
+	if scene.world.campaign.stage<0:
+		button("BEGIN CONTINUATION",func():scene.world.campaign.start();show_campaign(),content).disabled=not scene.world.story.complete()
+	elif not scene.world.campaign.completed:
+		button("TRAVEL TO OBJECTIVE",func():scene.world.travel_to(scene.world.campaign.destination());close();scene._sync_map_selection(),content)
+		button("REPORT TO KASHAM",func():scene.world.campaign.finish();show_campaign(),content).disabled=not scene.world.campaign.report
+	else:label("You have completed the reconstructed Earth-to-Signus campaign. Your party can continue exploring, fighting and developing every class.",content,28)
+
+func show_multiplayer() -> void:
+	open_page("LAN CO-OP · UP TO FOUR PLAYERS","multiplayer")
+	var scroll:=ScrollContainer.new();scroll.size_flags_vertical=Control.SIZE_EXPAND_FILL;content.add_child(scroll)
+	var body:=VBoxContainer.new();body.size_flags_horizontal=Control.SIZE_EXPAND_FILL;scroll.add_child(body)
+	label(scene.coop.status,body,28)
+	label("Use the same local network. Host opens UDP port 24838; guests enter the host's LAN address. Host leads travel and campaign. Trusted save import; no accounts or matchmaking.",body,25)
+	var address:=LineEdit.new();address.placeholder_text="Host address, e.g. 192.168.1.20";address.custom_minimum_size.y=56;address.add_theme_font_size_override("font_size",26);body.add_child(address)
+	button("HOST CO-OP",func():scene.coop.host();show_multiplayer(),body)
+	button("JOIN HOST",func():scene.coop.join(address.text);close(),body)
+	button("DISCONNECT & KEEP PROGRESS",func():scene.coop.stop();scene.world.save_game();show_multiplayer(),body)
+	button("RESPAWN IF FALLEN",func():scene.coop.request("respawn");close(),body).disabled=scene.world.hp>0 or not scene.coop.active()
+	var addresses: PackedStringArray=[]
+	for ip in IP.get_local_addresses():
+		if ":" not in ip and not ip.begins_with("127."):addresses.append(ip)
+	label("This device: "+", ".join(addresses),body,24)
+	label("IP KEYPAD · You can also type in the address field.",body,24)
+	var grid:=GridContainer.new();grid.columns=4;body.add_child(grid)
+	for symbol in ["1","2","3","⌫","4","5","6","CLEAR","7","8","9",".","0"]:
+		var key: String=symbol
+		button(key,func():
+			if key=="CLEAR":address.text=""
+			elif key=="⌫":address.text=address.text.left(maxi(0,address.text.length()-1))
+			elif address.text.length()<45:address.text+=key,grid)

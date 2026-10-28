@@ -124,7 +124,9 @@ func _begin() -> void:
 	else: _create()
 
 func _create() -> void:
+	if scene.coop.active():scene.coop.stop()
 	if scene.world.create_character(name_input.text,selected_hero):
+		scene.world.campaign.restore({});scene.world.party.allies.clear();scene.world.party.portal.clear();scene.world.set_combat_mode(true);scene.world.save_game()
 		has_save=true;scene.textures.clear();close_for_play()
 	else: feedback.text="Could not create the character. Check storage and name."
 

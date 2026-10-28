@@ -214,3 +214,26 @@ skill checks. The stat/inventory UI regression passed after adding the attack
 preview. All 60 Python and four recovered-rule checks passed. The Android export
 completed; signature/resource verification is recorded in v17-build.json. Device
 and iOS validation remain unavailable. Full original combat remains incomplete.
+
+## v0.18 reconstructed systems
+
+906 Godot/gameplay/network checks passed, together with 60 Python tests and four
+recovered-rule checks. No script/runtime errors remain in the final test logs.
+
+The full starter simulation completes Doctor training for all nine fresh classes
+using ordinary attacks/heals and the full combat rules. The level-400 legal-build
+scenario clears the source-health Spy/Esper chapter and all seven continuation
+missions using live AI, ordinary attacks/skills, supplies, pathfinding and loot
+recovery; no direct damage injection or invulnerability is used in that scenario.
+
+Separate ENet processes verify authoritative guest movement/attacks, invalid-stat
+rejection, companion recruitment, guest targeting, cross-player Resurrection,
+combat-rule synchronization, shared kill XP and shared campaign credit. Four
+processes verify three concurrent guests and clean disconnects. LAN/device Wi-Fi
+and physical Android performance are not tested here.
+
+UI checks click companion recruitment, Resurrection and campaign start and verify
+host/join controls and the mobile IP keypad. The campaign render was inspected.
+All 114 player and 36 monster records have playable reconstructed implementations.
+Exact original parity, every legacy special item and original public MMO services
+are not asserted; see reconstruction-v18.md and recovery-status.md.

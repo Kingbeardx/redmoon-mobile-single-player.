@@ -26,7 +26,7 @@ def build(client=CLIENT,game=ROOT/'game'):
             'not_missing_files':'All 114 player and 36 monster skill records are present. Pending effects require engineering, source behavior validation or multiplayer/ally targets; another skill-tree file is not established as missing.'}
 
 def main():
-    report=build();(ROOT/'analysis/v16-recovery-inventory.json').write_text(json.dumps(report,indent=2)+'\n')
+    report=build();(ROOT/'analysis/v18-recovery-inventory.json').write_text(json.dumps(report,indent=2)+'\n')
     doc='''# Remaining recovery inputs and implementation limits
 
 This is a measured inventory of the supplied 3.8 server packages and RMA 7.0
@@ -64,28 +64,23 @@ necessary file for every unimplemented effect.
 
 ## Code work, not established missing files
 
-108 of 114 player entries now have playable offline behavior. Thirteen entries
-added in v0.16 use reconstructed effects grounded in original descriptions, with
-explicit notes in the skill menu; these are not claims of exact native behavior.
+All 114 player entries and all 36 monster entries now have functional reconstructed
+implementations. Gate, Recall, Teleport and Resurrection use actual recruited or
+connected allies. A complete replacement combat model and seven-mission campaign
+continuation are playable. LAN co-op uses a new authoritative ENet host, rather
+than the unavailable legacy server protocol/account infrastructure.
 
-All 114 player skill records, all 36 monster skill records, class text, equipment
-tables and 48 offline music tracks are present. The remaining effects below
-already have data. Exact accuracy, advanced resource theft/auras, linked monster
-summons and special item effects still need native behavior integration. Gate,
-Recall, ally Teleport and Resurrection need actual allies; they must not be
-pretended to function in a one-character offline world. Legacy network services
-also need a compatible running server/database or a replacement implementation.
-No native Windows executable has been run on this host.
-
-This build retains an explicitly approximate base combat/monster-HP/loot model.
-Recovered source XP, DP, SP/recovery, requirements, durations and admitted skill
-effects do not make that entire combat pipeline identical to the original.
-iOS needs an Apple build/signing environment; it is not blocked on Redmoon art.
+The new effects, mission objectives, balance and multiplayer protocol are
+reconstructions; source requirements/text/art and verified arithmetic are retained.
+This is not proof of exact JCE behavior. Special items outside the implemented
+food/gear/map/reset-pill paths may still be reference content. Original events,
+loot frequencies and every publisher-era quest cannot be authenticated from these
+modified packages. No unknown executable was run. iOS still needs Apple tooling.
 
 ### Player effects still reference-only
 
 '''
-    doc+='\n'.join(f'- {r["id"]}: {r["name"]}' for r in report['pending_player_effects'])+'\n'
+    doc+=('\n'.join(f'- {r["id"]}: {r["name"]}' for r in report['pending_player_effects']) or 'None in the recovered 114-entry catalog.')+'\n'
     doc+='\n### Missing or version-mismatched object paths\n\n'
     doc+='\n'.join(f'- `{p}`' for p in report['missing_asset_references'])+'\n'
     doc+='\n### Client-only server-map candidates\n\n'

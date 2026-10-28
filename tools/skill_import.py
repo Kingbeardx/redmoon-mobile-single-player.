@@ -21,7 +21,7 @@ EXTRA_MODES = {9:'sleep',303:'sleep',86:'sleep',19:'freeze',84:'blind',
                55:'status_guard',85:'status_guard',311:'status_guard',40:'decoy',43:'taunt',
                34:'hide',48:'attack_speed',312:'attack_speed',65:'psychic_reflect',
                64:'warp',25:'rush',45:'rush',47:'berserker',18:'nimble',75:'nimble',
-               77:'attack_up',79:'attack_up',70:'restore',372:'zephyrus',90:'expose',332:'confuse',7:'voodoo',33:'telekinesis',29:'energy_drain',68:'vital_drain',38:'evasion',56:'snipe',58:'scatter',59:'chain',304:'starlight',305:'curse',314:'holy_shield',315:'damned_armor',361:'purity'}
+               77:'attack_up',79:'attack_up',70:'restore',372:'zephyrus',90:'expose',332:'confuse',7:'voodoo',6:'gate',15:'recall',28:'ally_teleport',301:'resurrect',54:'concentration',321:'luck',33:'telekinesis',29:'energy_drain',68:'vital_drain',38:'evasion',56:'snipe',58:'scatter',59:'chain',304:'starlight',305:'curse',314:'holy_shield',315:'damned_armor',361:'purity'}
 RUNTIME_NOTES={34:'Avoids physical damage while active; psychic attacks still hurt. Cast again to end Hide.',
                48:'Basic attacks recover 1.5× faster. Speed effects do not stack.',
                312:'Basic attacks recover 2× faster in offline play. Speed effects do not stack.',
@@ -31,14 +31,14 @@ RUNTIME_NOTES={34:'Avoids physical damage while active; psychic attacks still hu
                45:'Rush the nearest visible opponent, striking creatures along your path.',
                47:'Doubles basic and weapon-skill attack power, but halves base Power while active. This reduces maximum HP and DP.',
                18:'The recovered server effect adds a quarter of Spirit to Dexterity. This reduces running stamina cost in offline play.',
-               75:'Self-cast support adds a quarter of Spirit to Dexterity. Party targets require multiplayer.',
-               77:'Increases your attacks by 20%. Party targets require multiplayer.',
-               79:'Increases your attacks by 20%. Party targets require multiplayer.',
-               70:'Restores your own HP and MP. No other player targets exist in offline play.',
+               75:'Self-cast support adds a quarter of Spirit to Dexterity. This reconstructed support effect affects the caster.',
+               77:'Increases your attacks by 20%. This reconstructed support effect affects the caster.',
+               79:'Increases your attacks by 20%. This reconstructed support effect affects the caster.',
+               70:'Restores your own HP and MP. This reconstructed recovery effect affects the caster.',
                372:'Self-cast support increases movement and basic attack speed by 20%. Cannot refresh while active.',
                90:'Offline exposure reduces a creature\'s damage and defense to 70% while active.',
                332:'Disorients nearby creatures, making them wander instead of pursuing you.'}
-RUNTIME_NOTES.update({33: "Offline reconstruction: collect visible dropped items within 10 tiles while active. Ordinary pickup requires walking within 1.5 tiles.",7: 'Offline reconstruction: link one creature for the source duration; actual HP damage you suffer also hurts that creature while it stays within range.', 29: 'Offline reconstruction: a sword strike drains creature MP and stamina, returning only the energy actually removed.', 68: 'Offline reconstruction: damage drains HP and creature MP/stamina. Healing is limited to damage actually dealt.', 38: 'Offline reconstruction: 20% chance to evade physical damage. Psychic attacks and poison are unaffected.', 56: 'Offline reconstruction: gun attacks can reach visible creatures up to 10 tiles away while active.', 58: 'Offline reconstruction: basic attacks splash 50% damage to up to three creatures within two tiles of the target.', 59: 'Offline reconstruction: basic attacks jump to up to three nearby creatures, losing 25% damage at each jump. Does not stack with Dysperse.', 304: 'Offline self-cast reconstruction: +20% attack and 20% damage reduction. Ally targeting is unavailable.', 305: 'Offline reconstruction: curses a creature, reducing its damage and defense to 70% and preventing its healing for the source duration.', 314: 'Offline reconstruction: the source 120 multiplier gives 20% stronger protection, dividing incoming damage by 1.2.', 315: 'Offline reconstruction: returns 50% of actual HP damage to the attacking creature. Poison cannot reflect.', 361: 'Offline reconstruction: uses the source 70 multiplier to fill Danger Points at 100/70 of the usual rate.'})
+RUNTIME_NOTES.update({6:"Reconstructed: create a 60-second two-way gate. Choose its destination in JOURNEY → PARTY; allies travel with you.",15:"Recall the selected recruited ally to your position.",28:"Teleport to the selected recruited ally.",301:"Stand beside a fallen ally; give half your current HP and all MP to revive them.",54:"Reconstructed combat: original gun accuracy bonus +15 before the offline hit floor.",321:"Reconstructed combat: original 120 multiplier raises attack success by 20%.",33: "Offline reconstruction: collect visible dropped items within 10 tiles while active. Ordinary pickup requires walking within 1.5 tiles.",7: 'Offline reconstruction: link one creature for the source duration; actual HP damage you suffer also hurts that creature while it stays within range.', 29: 'Offline reconstruction: a sword strike drains creature MP and stamina, returning only the energy actually removed.', 68: 'Offline reconstruction: damage drains HP and creature MP/stamina. Healing is limited to damage actually dealt.', 38: 'Offline reconstruction: 20% chance to evade physical damage. Psychic attacks and poison are unaffected.', 56: 'Offline reconstruction: gun attacks can reach visible creatures up to 10 tiles away while active.', 58: 'Offline reconstruction: basic attacks splash 50% damage to up to three creatures within two tiles of the target.', 59: 'Offline reconstruction: basic attacks jump to up to three nearby creatures, losing 25% damage at each jump. Does not stack with Dysperse.', 304: 'Offline self-cast reconstruction: +20% attack and 20% damage reduction. Ally targeting is unavailable.', 305: 'Offline reconstruction: curses a creature, reducing its damage and defense to 70% and preventing its healing for the source duration.', 314: 'Offline reconstruction: the source 120 multiplier gives 20% stronger protection, dividing incoming damage by 1.2.', 315: 'Offline reconstruction: returns 50% of actual HP damage to the attacking creature. Poison cannot reflect.', 361: 'Offline reconstruction: uses the source 70 multiplier to fill Danger Points at 100/70 of the usual rate.'})
 MONSTER_MODES={0:'damage',1:'heal',2:'root',17:'blind',18:'physical_damage',
                19:'damage',22:'sleep',26:'freeze',38:'slow',70:'damage',
                71:'damage',72:'damage',73:'damage',42:'poison'}
@@ -72,7 +72,7 @@ def build(server, client):
         v=fields(bytes.fromhex(row['suffix_hex']))
         if row['prefix_u8']==2:
             # Composite summoning, theft and scripted attacks stay unsupported.
-            mode=MONSTER_MODES.get(v['effect'],'pending') if row['slot'] not in [201,203,204,206] else 'pending'
+            mode={191:'steal',192:'stealth',194:'stealth',195:'nightmare',201:'steal',203:'hold_summon',204:'linked_cleanse',205:'summon',206:'linked_heal',207:'disarm_drop',208:'monster_curse',211:'blessing'}.get(row['slot'],MONSTER_MODES.get(v['effect'],'pending'))
             monsters.append({'id':row['slot'],**v,'name':row['name'],'mode':mode,
                              'range':v['range_encoded']%10000,'area':v['range_encoded']>=10000})
             continue
@@ -117,7 +117,7 @@ def build(server, client):
     return {'schema_version':1,'source_sha256':hashlib.sha256(server.read_bytes()).hexdigest(),
             'client_sha256':hashlib.sha256((client/'DATAs/Info/skill00.rmi').read_bytes()).hexdigest(),
             'requirements':'Original 3.8 server; English text and displayed hero IDs from Message.ctf',
-            'runtime_limit':'Damage, cooldown, targeting and status integration use the offline combat model. The first honor-cap chapter is playable; DP specials and source XP are supported. Multiplayer, later quests and advanced effects remain incomplete.',
+            'runtime_limit':'v0.18 implements reconstructed solo and LAN co-op behavior with original requirements and resources. Exact native combat, quest-script and original-server protocol parity remain unverified.',
             'skills':result,'monster_skills':monsters,
             'summary':{'player_skills':len(result),'reconstructed':len(result)-len(issues),'reference_only':len(issues)}}
 

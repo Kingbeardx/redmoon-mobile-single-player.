@@ -33,20 +33,24 @@ func run() -> void:
 	check(scene.world.map_id==1 and scene.world.tutorial_stage==2,"town guide UI reaches Street 1")
 	scene._travel_rows();press_row(scene,"Travel to Backyard")
 	check(scene.world.map_id==0,"town guide UI reaches beginner combat zone")
+	scene.world.combat.random.seed=7
 	for i in range(3):
 		scene.world.enemies=[{"monster_id":1,"x":scene.world.player.x,"y":scene.world.player.y,"hp":1,"alive":true}]
-		scene.world.attack_cooldown=0;scene.attack_button.emit_signal("pressed")
+		for attempt in range(20):
+			if not scene.world.enemies[0]["alive"]:break
+			scene.world.attack_cooldown=0;scene.attack_button.emit_signal("pressed")
 	check(scene.world.tutorial_stage==3,"attack control completes training")
+	var earned_gold: int=scene.world.gold
 	scene._travel_rows();press_row(scene,"Travel to Street 1 Hospital")
 	scene.game_ui.talk_nearby();scene.game_ui.dialogue_primary.emit_signal("pressed")
-	check(scene.world.tutorial_stage==4 and scene.world.gold==165,"return and Doctor dialogue complete beginner journey")
+	check(scene.world.tutorial_stage==4 and scene.world.gold==earned_gold+100,"return and Doctor dialogue complete beginner journey")
 	scene._travel_rows();press_row(scene,"Travel to Street 1 Food Shop")
 	scene._market_rows()
 	var before: int=int(scene.world.inventory.get("4:1",0))
 	for item in scene.world.zone_stock():
 		if item["key"]=="4:1":scene.game_ui.shop_selection=item["purchase_key"]
 	scene.game_ui.show_shop();scene.game_ui.shop_buy_button.emit_signal("pressed")
-	check(int(scene.world.inventory.get("4:1",0))==before+1 and scene.world.gold==115,"food shop UI purchases source-priced food")
+	check(int(scene.world.inventory.get("4:1",0))==before+1 and scene.world.gold==earned_gold+100-50,"food shop UI purchases source-priced food")
 	scene.frontend.show_title();scene.frontend.show_creation()
 	scene.frontend.name_input.text="Replacement";scene.frontend._begin()
 	check(scene.frontend.replace_dialog.visible and scene.world.player_name=="TestHero","replacing existing save requires confirmation")

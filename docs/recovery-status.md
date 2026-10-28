@@ -35,32 +35,22 @@ necessary file for every unimplemented effect.
 
 ## Code work, not established missing files
 
-108 of 114 player entries now have playable offline behavior. Thirteen entries
-added in v0.16 use reconstructed effects grounded in original descriptions, with
-explicit notes in the skill menu; these are not claims of exact native behavior.
+All 114 player entries and all 36 monster entries now have functional reconstructed
+implementations. Gate, Recall, Teleport and Resurrection use actual recruited or
+connected allies. A complete replacement combat model and seven-mission campaign
+continuation are playable. LAN co-op uses a new authoritative ENet host, rather
+than the unavailable legacy server protocol/account infrastructure.
 
-All 114 player skill records, all 36 monster skill records, class text, equipment
-tables and 48 offline music tracks are present. The remaining effects below
-already have data. Exact accuracy, advanced resource theft/auras, linked monster
-summons and special item effects still need native behavior integration. Gate,
-Recall, ally Teleport and Resurrection need actual allies; they must not be
-pretended to function in a one-character offline world. Legacy network services
-also need a compatible running server/database or a replacement implementation.
-No native Windows executable has been run on this host.
-
-This build retains an explicitly approximate base combat/monster-HP/loot model.
-Recovered source XP, DP, SP/recovery, requirements, durations and admitted skill
-effects do not make that entire combat pipeline identical to the original.
-iOS needs an Apple build/signing environment; it is not blocked on Redmoon art.
+The new effects, mission objectives, balance and multiplayer protocol are
+reconstructions; source requirements/text/art and verified arithmetic are retained.
+This is not proof of exact JCE behavior. Special items outside the implemented
+food/gear/map/reset-pill paths may still be reference content. Original events,
+loot frequencies and every publisher-era quest cannot be authenticated from these
+modified packages. No unknown executable was run. iOS still needs Apple tooling.
 
 ### Player effects still reference-only
 
-- 6: Dimensional Gate
-- 15: Recall
-- 28: Teleport
-- 54: Concentration
-- 301: Resurrection
-- 321: Rabbit's Foot
+None in the recovered 114-entry catalog.
 
 ### Missing or version-mismatched object paths
 

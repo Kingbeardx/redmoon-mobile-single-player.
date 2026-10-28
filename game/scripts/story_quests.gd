@@ -42,7 +42,7 @@ func title() -> String:
 
 func objective() -> String:
 	if not active():return "Reach level %d to begin the recovered Spy story." % minimum_level()
-	if complete():return "The recovered first chapter is complete. Your honor cap is ±400. Later chapters are not playable yet."
+	if complete():return "The recovered first chapter is complete. Your honor cap is ±%d. Open JOURNEY → CAMPAIGN CONTINUATION to play the reconstructed later chapters." % world.honor_cap()
 	if has(32):return "Return to Kasham's House and report Esper's defeat."
 	if has(16):return "Find and defeat the quest Esper in Sahara Dungeon 1, then return to Kasham."
 	if has(8):return text(235)
@@ -178,6 +178,7 @@ func encounter_hp(id: int) -> int:
 	# Constitution is used as the offline encounter HP, not a claimed original
 	# monster HP formula. Ordinary creatures keep the existing combat model.
 	if world==null:return 36
+	if world.complete_combat:return world.combat.monster_health(world,id)
 	if (world.map_id==74 and id==90) or (world.map_id==72 and id==92):return maxi(36,int(world.monster_metadata.get(id,{}).get("constitution",36)))
 	return 36
 
@@ -196,3 +197,15 @@ func restore(saved: Variant) -> void:
 			for pair in [[2,1],[4,2],[8,4],[16,8],[32,16],[64,32]]:
 				if has(pair[0]) and not has(pair[1]):flags=0;break
 	update()
+
+func prepare_solo_instance() -> void:
+	# Replaces the missing quest-instance program for a solo/full-rules run.
+	# Keep the recovered quest Esper and coordinates; ambient server population
+	# belongs to the shared MMO dungeon and is restored outside this mission.
+	if world==null or not world.complete_combat or world.map_id!=72:return
+	if has(16) and not has(32):
+		world.enemies=world.enemies.filter(func(enemy:Dictionary)->bool:return int(enemy.get("monster_id",0))==92)
+		if not world.enemies.is_empty():
+			var target: Dictionary=world.enemies[0]
+			world.player=world.find_start([int(target["x"])-3,int(target["y"])])
+	elif has(32) and not world.enemies.any(func(enemy:Dictionary)->bool:return int(enemy.get("monster_id",0))!=92):world.enemies=[];world.spawn_enemies()

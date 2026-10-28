@@ -66,7 +66,10 @@ var show_overlay: bool = false
 var camera_origin := Vector2.ZERO
 var world_zoom: float=2.0
 
+var coop=preload("res://scripts/coop_session.gd").new()
+
 func _ready() -> void:
+	coop.name="Session";add_child(coop);coop.setup(world)
 	RenderingServer.set_default_clear_color(Color(0.027, 0.039, 0.059))
 	var options:=ConfigFile.new()
 	if options.load("user://accessibility.cfg")==OK:
@@ -220,7 +223,18 @@ func _layout() -> void:
 func _process(delta: float) -> void:
 	if not ready_world:
 		return
+	if coop.refresh_ui:
+		coop.refresh_ui=false
+		if game_ui.page=="bag":game_ui.show_bag()
+		elif game_ui.page=="stats":game_ui.show_stats()
+		elif game_ui.page=="party":game_ui.show_party()
+		elif game_ui.page=="shop":game_ui.show_shop()
+		elif game_ui.page=="skills":game_ui.show_skills()
 	if audio_controller.player!=null:audio_controller.set_map(world.map_id)
+	if ui_blocked() and coop.active():
+		coop.client_direction=Vector2.ZERO
+		if not coop.is_client():world.tick(delta,Vector2.ZERO)
+		return
 	if ui_blocked():
 		aiming_skill=0
 		world.advance_respawns(delta)
@@ -240,7 +254,10 @@ func _process(delta: float) -> void:
 		if game_ui.panel.visible: return
 	# Invert isometric projection so controls always follow screen directions.
 	var map_direction := direction.limit_length(1.0)
-	world.tick(delta, map_direction)
+	if coop.is_client():
+		coop.client_direction=map_direction;world.elapsed+=delta;world.motion=map_direction;world.action_remaining=maxf(0,world.action_remaining-delta)
+		if map_direction.length_squared()>.001:world.facing=world.facing_for(map_direction)
+	else:world.tick(delta, map_direction)
 	autosave_elapsed += delta
 	ui_elapsed += delta
 	if autosave_elapsed >= 20.0:
@@ -319,12 +336,14 @@ func _sync_map_selection() -> void:
 	map_select.text="TRAVEL"
 
 func _attack() -> void:
+	if coop.active():coop.request("attack");return
 	var prior: int = world.defeated
 	if world.attack():
 		play_sound("loot" if world.defeated>prior else "attack")
 	_update_ui()
 
 func _heal() -> void:
+	if coop.active():coop.request("heal");return
 	if world.heal():
 		play_sound("heal")
 	_update_ui()
@@ -352,7 +371,7 @@ func _update_ui() -> void:
 	location_label.text=world.map_name()
 	if status.text!=world.message:status_age=0;status.modulate.a=1
 	status.text=world.message
-	help_label.text=world.story.title() if world.story.active() else ["Meet the Doctor","Visit Street 1","Backyard · %d / 3" % world.tutorial_kills,"Return to Doctor","Explore Redmoon"][world.tutorial_stage] if world.adventure_started else "Explore Redmoon"
+	help_label.text=world.campaign.title() if world.campaign.stage>=0 else world.story.title() if world.story.active() else ["Meet the Doctor","Visit Street 1","Backyard · %d / 3" % world.tutorial_kills,"Return to Doctor","Explore Redmoon"][world.tutorial_stage] if world.adventure_started else "Explore Redmoon"
 	var cooldown: float=world.attack_cooldown/.45
 	attack_button.set_state("",world.attack_cooldown/world.skills.basic_attack_delay())
 	heal_button.disabled=world.potions<=0;heal_button.set_state(str(world.potions),0)
@@ -385,6 +404,7 @@ func _skill(slot: int=0) -> void:
 	_cast_skill_id(int(world.skills.slots[slot]))
 
 func _cast_skill_id(id: int) -> void:
+	if coop.active() and id!=64:coop.request("skill",id);return
 	if world.skills.entry(id).get("mode","")=="warp":
 		if aiming_skill==id:aiming_skill=0;world.message="Warp cancelled."
 		elif world.skills.requirement(id)=="Ready" and world.skills.has_resource(id):aiming_skill=id;aiming_map=world.map_id;pending_npc.clear();npc_path.clear();world.message="WARP · Tap a visible open tile. Tap Warp again to cancel."
@@ -394,6 +414,7 @@ func _cast_skill_id(id: int) -> void:
 	_update_ui()
 
 func _food() -> void:
+	if coop.active():coop.request("food");return
 	if world.quick_food():play_sound("heal")
 	_update_ui()
 
@@ -438,8 +459,15 @@ func _draw() -> void:
 			elif (x + y) % 4 == 0:
 				draw_circle(point, 1.3, Color(0.13, 0.17, 0.21))
 	var entities: Array = object_draws.duplicate()
+	var gate: Dictionary=world.party.portal
+	if not gate.is_empty() and world.map_id==int(gate["map"]):
+		var portal_point: Vector2=iso(Vector2(gate["x"],gate["y"]))+camera_origin
+		draw_arc(portal_point+Vector2(0,-24),30,0,TAU,40,Color("9c8cff"),4,true)
+		draw_string(ThemeDB.fallback_font,portal_point+Vector2(-24,-65),"GATE",HORIZONTAL_ALIGNMENT_LEFT,-1,18,Color("c4b7ff"))
 	for drop in world.ground_loot:
 		entities.append({"position":Vector2(drop["x"],drop["y"]),"loot":drop,"player":false})
+	for ally in world.party.allies+coop.remote_views:
+		if int(ally["map"])==world.map_id:entities.append({"position":Vector2(ally["x"],ally["y"]),"enemy":ally,"player":false})
 	for enemy in world.enemies:
 		if bool(enemy.get("alive", false)):
 			entities.append({"position": Vector2(float(enemy["x"]), float(enemy["y"])), "enemy": enemy, "player": false})
@@ -488,6 +516,9 @@ func _draw() -> void:
 
 func _draw_actor(point: Vector2, is_player: bool, enemy: Dictionary) -> void:
 	if not is_player and not enemy.is_empty() and enemy==world.selected_enemy:draw_arc(point,23,0,TAU,40,Color.GOLD,2,true)
+	if bool(enemy.get("starter",false)):draw_string(ThemeDB.fallback_font,point+Vector2(-30,-80),"TRAINING",HORIZONTAL_ALIGNMENT_LEFT,-1,16,TEAL)
+	if enemy.has("hero"):
+		draw_string(ThemeDB.fallback_font,point+Vector2(-35,-80),str(enemy.get("name","Ally"))+(" · FALLEN" if int(enemy.get("hp",1))<=0 else ""),HORIZONTAL_ALIGNMENT_LEFT,-1,18,TEAL)
 	if enemy.get("npc", false):
 		draw_string(ThemeDB.fallback_font, point + Vector2(-35,-65), str(enemy.get("npc_name","NPC")), HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color.GOLD)
 	if not is_player and not enemy.get("npc",false):
@@ -513,9 +544,9 @@ func _draw_actor(point: Vector2, is_player: bool, enemy: Dictionary) -> void:
 		if not action_frames.is_empty():
 			frames = action_frames
 		var frame: int = int(world.elapsed / 0.06) % frames.size()
-		if action_time>0:frame=mini(frames.size()-1,int((1-action_time/(world.action_duration if is_player else .55))*frames.size()))
+		if action_time>0:frame=mini(frames.size()-1,int((1-action_time/(world.action_duration if is_player else float(enemy.get("action_duration",.55))))*frames.size()))
 		var key: String = frames[frame]
-		var tint: Color=Color(0.7,0.75,0.9,.55) if is_player and not world.skills.active("hide").is_empty() else Color.WHITE
+		var tint: Color=Color(0.7,0.75,0.9,.55) if is_player and not world.skills.active("hide").is_empty() else (Color(.5,.5,.6,.45) if int(enemy.get("hp",1))<=0 or float(enemy.get("stealth_time",0))>0 else Color.WHITE)
 		_draw_image(key, point,tint)
 		if is_player and not world.skills.active("psychic_reflect").is_empty():draw_arc(point+Vector2(0,-28),28,0,TAU,40,Color("dd5c66"),2,true)
 		if not is_player and not enemy.get("npc",false):
@@ -726,7 +757,8 @@ func _unhandled_input(event: InputEvent) -> void:
 		if aiming_skill!=0:
 			if aiming_map!=world.map_id:aiming_skill=0;return
 			var destination: Vector2=(event.position/world_zoom-camera_origin)/TILE
-			if world.skills.cast(aiming_skill,destination):aiming_skill=0;world.save_game();play_sound("attack")
+			if coop.is_client():coop.warp.rpc_id(1,destination);aiming_skill=0
+			elif world.skills.cast(aiming_skill,destination):aiming_skill=0;world.save_game();play_sound("attack")
 			_update_ui();queue_redraw();get_viewport().set_input_as_handled();return
 		var npc:=npc_at_screen(event.position)
 		if npc.is_empty():

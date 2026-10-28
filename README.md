@@ -2,9 +2,13 @@
 
 Android game rebuilt from the supplied server data and the RMA 7.0 client.
 
+v0.18 implements all 114 player entries and 36 monster entries, recruited allies,
+a reconstructed campaign continuation, full RPG combat and four-player LAN co-op.
+See [play instructions, reconstruction choices and limits](docs/reconstruction-v18.md).
+
 ## Play
 
-Install `build/Redmoon-Mobile-v0.9.apk` on ARM64 Android 7.0 or newer.
+Install `build/Redmoon-Mobile-v0.18.apk` on ARM64 Android 7.0 or newer.
 Use the movement pad and ATTACK/HEAL buttons. BAG opens an item grid with separate CHARACTER and JOURNEY tabs. Tap an NPC
 to open their dialogue; distant NPCs can be approached automatically.
 Gold NPC markers identify interaction locations. Use the upper-right TRAVEL menu for connected locations and the beginner town guide. Progress saves locally, automatically and with SAVE. No server/login needed.

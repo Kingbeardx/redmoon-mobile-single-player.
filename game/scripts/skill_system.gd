@@ -12,7 +12,7 @@ var ailments: Dictionary={}
 var control_grace: float=0
 var poison_elapsed: float=0
 const CONTROL_TYPES=["root","freeze","sleep"]
-const BUFF_MODES=["disguise","attack_up","haste","mana_shield","barrier","reload","range_up","fear_aura","status_guard","purify_guard","decoy","taunt","hide","attack_speed","psychic_reflect","berserker","nimble","zephyrus","evasion","snipe","scatter","chain","starlight","holy_shield","damned_armor","purity","telekinesis"]
+const BUFF_MODES=["disguise","attack_up","haste","mana_shield","barrier","reload","range_up","fear_aura","status_guard","purify_guard","decoy","taunt","hide","attack_speed","psychic_reflect","berserker","nimble","zephyrus","evasion","snipe","scatter","chain","starlight","holy_shield","damned_armor","purity","telekinesis","concentration","luck"]
 const RECOVERY: float=.8 # Offline input pacing, not an original server delay.
 
 func setup(owner_world,data: Variant) -> void:
@@ -92,6 +92,7 @@ func has_resource(id: int) -> bool:
 	return world.mana>=cost(id)
 
 func assign(slot: int,id: int) -> bool:
+	if world!=null and world.request_online("bind",{"slot":slot,"id":id}):return true
 	if slot<0 or slot>2 or (id!=0 and requirement(id)!="Ready"):return false
 	ensure_slots()
 	for i in range(3):
@@ -122,7 +123,7 @@ func tick(delta: float) -> void:
 	for e in effects:e["remaining"]-=seconds
 	effects=effects.filter(func(e: Dictionary)->bool:return e["remaining"]>0)
 	for enemy in world.enemies:
-		for name in ["root_time","weaken_time","slow_time","stun_time","sleep_time","freeze_time","blind_time","expose_time","confuse_time","curse_time","voodoo_time"]:
+		for name in ["root_time","weaken_time","slow_time","stun_time","sleep_time","freeze_time","blind_time","expose_time","confuse_time","curse_time","voodoo_time","stealth_time","monster_buff_time"]:
 			if enemy.has(name):enemy[name]=maxf(0,float(enemy[name])-seconds)
 
 func active(mode: String) -> Dictionary:
@@ -170,6 +171,9 @@ func cast(id: int,destination: Vector2=Vector2(INF,INF)) -> bool:
 		if not can_act():world.message="You cannot act while frozen or asleep.";return false
 		return world.cast_skill()
 	var row: Dictionary=entry(id);var mode: String=str(row["mode"]);var used: int=cost(id)
+	if mode in ["gate","recall","ally_teleport","resurrect"]:
+		var support_reason: String=world.party.prepare(mode)
+		if support_reason!="Ready":world.message=support_reason;return false
 	if mode=="warp":
 		if not destination.is_finite():world.message="Choose a visible open tile for Warp.";return false
 		if not can_move() or destination.distance_to(world.player)>10 or not world.can_stand(destination) or not world.clear_sight(world.player,destination) or destination.distance_to(world.player)<.1:world.message="Warp needs a nearby visible open tile and freedom to move.";return false
@@ -220,10 +224,12 @@ func cast(id: int,destination: Vector2=Vector2(INF,INF)) -> bool:
 		amount=maxi(1,int((12+world.weapon_bonus+(world.level-1)*2)*float(row["multiplier"])/100.0))
 		if mode=="danger_attack":amount=maxi(1,world.rules.special_attack(world.level)*int(row["multiplier"])/100)
 		elif not str(row["weapon"]).is_empty():amount=maxi(1,int(world.basic_attack_power()*float(row["multiplier"])/100.0*physical_factor()))
+		if world.complete_combat and mode!="danger_attack" and str(row["weapon"]).is_empty():amount=maxi(1,int(world.spell_attack_power()*float(row["multiplier"])/100.0))
 		amount=maxi(1,int(amount*factor("attack_up")))
 		for enemy in targets:
+			if world.complete_combat and not str(row["weapon"]).is_empty() and not world.combat.player_hit(world,enemy):continue
 			var before_hp: int=int(enemy["hp"])
-			world.damage_enemy(enemy,amount)
+			world.damage_enemy(enemy,world.combat.roll_damage(world,amount,str(row["weapon"]).is_empty()) if world.complete_combat else amount)
 			var actual_damage: int=before_hp-int(enemy["hp"])
 			if mode in ["energy_drain","vital_drain"]:drain_energy(enemy,actual_damage,mode=="vital_drain")
 			if mode=="leech":world.hp=mini(world.max_hp(),world.hp+actual_damage*int(row["leech_percent"])/100)
@@ -232,6 +238,8 @@ func cast(id: int,destination: Vector2=Vector2(INF,INF)) -> bool:
 				enemy[ailment]=maxf(1,world.effective_stat("spirit")/20+int(row["duration_base"]))
 			effects.append({"skill_id":id,"start_x":world.player.x,"start_y":world.player.y,"facing":world.facing_for(world.player.direction_to(Vector2(enemy["x"],enemy["y"]))),"x":enemy["x"],"y":enemy["y"],"mode":mode,"remaining":.65,"label":"−%d" % amount})
 		if mode=="rush":world.player=rush_end
+	elif mode in ["gate","recall","ally_teleport","resurrect"]:
+		world.party.support(mode)
 	elif mode=="warp":
 		effects.append({"x":world.player.x,"y":world.player.y,"mode":"buff","remaining":.65,"label":"WARP"});world.player=destination;break_disguise()
 	elif mode=="restore":

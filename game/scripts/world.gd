@@ -18,6 +18,7 @@ var visited: Array = []
 var bank_gold: int = 0
 var arrival_grace: float = 0.0
 var gold: int = 0
+var sig_gold: int=0
 var inventory: Dictionary = {}
 var armor_bonus: int = 0
 var weapon_bonus: int = 0
@@ -28,6 +29,13 @@ var stamina: int = 2000
 var rest_elapsed: float=0
 var run_distance: float=0
 var run_steps: int=0
+var network_session: WeakRef
+var save_path_override: String=""
+var coop_active: bool=false
+var complete_combat: bool=false
+var combat=preload("res://scripts/combat_engine.gd").new()
+var campaign=preload("res://scripts/campaign.gd").new()
+var party=preload("res://scripts/party_system.gd").new()
 var rules=preload("res://scripts/recovered_combat.gd").new()
 var bounty_claimed: bool = false
 var honor: int = 0
@@ -90,6 +98,7 @@ func read_json(path: String) -> Variant:
 
 func initialize(root: String = "res://data") -> bool:
 	data_root = root
+	party.setup(self);campaign.setup(self)
 	story.setup(self,read_json(data_root+"/story.json"))
 	var skill_data=read_json(data_root+"/skills.json")
 	skills.setup(self,skill_data);monster_skills.setup(self,skill_data)
@@ -177,6 +186,11 @@ func enter_map(id: int, keep_current: bool = true) -> bool:
 		restore_map_state(map_states[str(id)])
 	else:
 		spawn_enemies()
+	if uses_starter_encounter() and not enemies.any(func(e:Dictionary)->bool:return bool(e.get("starter",false))):enemies=[];spawn_starter_encounter()
+	elif not uses_starter_encounter() and enemies.any(func(e:Dictionary)->bool:return bool(e.get("starter",false))):enemies=[];spawn_enemies()
+	story.prepare_solo_instance()
+	campaign.ensure_encounter()
+	party.regroup()
 	attack_cooldown = 0.0
 	attack_flash = 0.0
 	if adventure_started:
@@ -218,6 +232,7 @@ func find_start(preferred: Variant) -> Vector2:
 	return Vector2(origin) + Vector2(0.5, 0.5)
 
 func spawn_enemies() -> void:
+	if uses_starter_encounter():spawn_starter_encounter();return
 	var random := RandomNumberGenerator.new()
 	random.seed = 38921 + map_id
 	var records: Array = content.get("spawns", [])
@@ -277,6 +292,7 @@ func tick(delta: float, direction: Vector2) -> void:
 	elapsed += dt
 	advance_respawns(maxf(0,delta))
 	skills.tick(maxf(0,delta))
+	party.tick(maxf(0,delta))
 	recover(delta)
 	arrival_grace=maxf(0,arrival_grace-dt)
 	if not skills.can_move():direction=Vector2.ZERO
@@ -299,29 +315,31 @@ func tick(delta: float, direction: Vector2) -> void:
 		if not bool(enemy.get("alive", false)):
 			continue
 		var position := Vector2(float(enemy["x"]), float(enemy["y"]))
+		var opponent=combat_target(enemy)
+		var pursuit: Vector2=opponent.player
 		enemy["action_remaining"]=maxf(0,float(enemy.get("action_remaining",0))-dt)
 		enemy["moving"] = false
-		var distance: float = position.distance_to(player)
+		var distance: float = position.distance_to(pursuit)
 		enemy["cooldown"] = maxf(0.0, float(enemy["cooldown"]) - dt)
-		if not skills.active("disguise").is_empty():continue
+		if not opponent.skills.active("disguise").is_empty():continue
 		if float(enemy.get("sleep_time",0))>0 or float(enemy.get("freeze_time",0))>0:continue
 		if float(enemy.get("confuse_time",0))>0:
 			var wandering: Vector2=move_entity(position,Vector2.from_angle(elapsed*2+int(enemy.get("monster_id",0)))*dt)
 			enemy["x"]=wandering.x;enemy["y"]=wandering.y;enemy["moving"]=true;continue
-		if not skills.active("fear_aura").is_empty() and distance<8:
-			var fleeing: Vector2=move_entity(position,player.direction_to(position)*1.1*dt)
+		if not opponent.skills.active("fear_aura").is_empty() and distance<8:
+			var fleeing: Vector2=move_entity(position,pursuit.direction_to(position)*1.1*dt)
 			enemy["x"]=fleeing.x;enemy["y"]=fleeing.y;enemy["moving"]=true;continue
 		if float(enemy.get("stun_time",0))>0:continue
-		if monster_skills.tick_enemy(enemy,dt):continue
-		var aggro_range: float=15 if not skills.active("taunt").is_empty() else 8
+		if opponent.monster_skills.tick_enemy(enemy,dt):continue
+		var aggro_range: float=15 if not opponent.skills.active("taunt").is_empty() else 8
 		if distance < aggro_range and distance > monster_skills.engagement_distance(int(enemy.get("monster_id",0))):
 			if float(enemy.get("root_time",0))>0:continue
-			var toward: Vector2 = position.direction_to(player)
+			var toward: Vector2 = position.direction_to(pursuit)
 			var moved: Vector2 = move_entity(position,toward * 1.1 * (.5 if float(enemy.get("slow_time",0))>0 else 1.0) * dt)
-			if not clear_sight(position,player) and navigation != null:
+			if not clear_sight(position,pursuit) and navigation != null:
 				enemy["nav_cooldown"] = maxf(0,float(enemy.get("nav_cooldown",0))-dt)
 				if float(enemy["nav_cooldown"]) <= 0:
-					var path: Array[Vector2i] = navigation.get_id_path(Vector2i(position.floor()),Vector2i(player.floor()))
+					var path: Array[Vector2i] = navigation.get_id_path(Vector2i(position.floor()),Vector2i(pursuit.floor()))
 					if path.size()>1:
 						enemy["nav_x"] = path[1].x+0.5
 						enemy["nav_y"] = path[1].y+0.5
@@ -334,11 +352,11 @@ func tick(delta: float, direction: Vector2) -> void:
 			enemy["moving"] = true
 			enemy["x"] = position.x
 			enemy["y"] = position.y
-		elif distance <= 1.6 and float(enemy["cooldown"]) <= 0.0 and clear_sight(position,player) and arrival_grace<=0:
-			enemy["action_remaining"]=.55;enemy["facing"]=facing_for(position.direction_to(player))
-			if float(enemy.get("blind_time",0))<=0:receive_damage(4,enemy,false)
-			enemy["cooldown"] = 1.4
-	if hp <= 0 and adventure_started:
+		elif distance <= (clampf(float(monster_metadata.get(int(enemy.get("monster_id",0)),{}).get("attack_range_1",1)),1.6,10) if complete_combat else 1.6) and float(enemy["cooldown"]) <= 0.0 and clear_sight(position,pursuit) and opponent.arrival_grace<=0:
+			enemy["action_remaining"]=.55;enemy["facing"]=facing_for(position.direction_to(pursuit))
+			if float(enemy.get("blind_time",0))<=0 and (not complete_combat or opponent.combat.monster_hit(opponent,enemy)):opponent.receive_damage(opponent.combat.monster_damage(opponent,enemy) if complete_combat else 4,enemy,false)
+			enemy["cooldown"] = clampf(float(monster_metadata.get(int(enemy["monster_id"]),{}).get("attack_interval_1",1400))/1000,.5,5) if complete_combat else 1.4
+	if hp <= 0 and adventure_started and not coop_active:
 		enter_map(9)
 		player=find_start([9,12])
 		skills.ailments.clear();skills.buffs.clear()
@@ -389,7 +407,9 @@ func attack() -> bool:
 	facing=facing_for(player.direction_to(Vector2(target["x"],target["y"])))
 	start_attack_animation(skills.basic_attack_delay())
 	skills.break_disguise()
+	if complete_combat and not combat.player_hit(self,target):message="Miss · Increase Dexterity or use accuracy skills.";return true
 	var damage: int=maxi(1,int(basic_attack_power()*skills.factor("attack_up")*skills.physical_factor()))
+	if complete_combat:damage=combat.roll_damage(self,damage)
 	damage_enemy(target,damage)
 	skills.secondary_hits(target,damage)
 	return true
@@ -401,9 +421,13 @@ func damage_enemy(target: Dictionary,amount: int) -> void:
 	if not bool(target.get("alive",false)):return
 	if float(target.get("weaken_time",0))>0:amount=int(ceil(amount/0.75))
 	if float(target.get("expose_time",0))>0 or float(target.get("curse_time",0))>0:amount=int(ceil(amount/.7))
+	if complete_combat:amount=combat.mitigation(amount,int(monster_metadata.get(int(target["monster_id"]),{}).get("constitution",0)),0)
 	target["sleep_time"]=0
 	target["hp"]=maxi(0,int(target["hp"])-amount)
 	if int(target["hp"]) <= 0:
+		for item in target.get("stolen",{}):
+			inventory[item]=int(inventory.get(item,0))+int(target["stolen"][item])
+		target.erase("stolen")
 		target["alive"] = false
 		target["respawn_timer"] = maxf(1,float(target.get("respawn_seconds",60)))
 		defeated += 1
@@ -413,24 +437,34 @@ func damage_enemy(target: Dictionary,amount: int) -> void:
 		if adventure_started and tutorial_stage==2 and map_id==0:
 			tutorial_kills+=1
 			if tutorial_kills>=3: tutorial_stage=3
-		gold += 5
+		gold += maxi(5,level*3) if bool(target.get("starter",false)) else 5
 		for spawn in content.get("spawns", []):
 			if int(spawn.get("monster_id",0)) == int(target["monster_id"]) and int(spawn.get("map_id",-1)) == map_id:
 				var drops: Array = spawn.get("items", [])
-				if not drops.is_empty():
+				if complete_combat:
+					for drop in drops:grant_source_drop(drop,Vector2(target["x"],target["y"]))
+				elif not drops.is_empty():
 					var key: String = "%d:%d" % [drops[0]["kind"], drops[0]["index"]]
 					drop_loot(key,Vector2(target["x"],target["y"]))
 				break
 		var previous_level: int=level
 		var gain: int=award_experience(int(monster_metadata.get(int(target["monster_id"]),{}).get("experience",0)))
+		reward_nearby_players(int(monster_metadata.get(int(target["monster_id"]),{}).get("experience",0)),Vector2(target["x"],target["y"]))
 		if level==previous_level:message="Creature %d defeated · +%d XP" % [int(target["monster_id"]),gain]
 	else:
 		message = "Hit creature %d" % int(target["monster_id"])
 
-	if int(target["hp"])<=0:story.on_defeat(int(target["monster_id"]))
+	if int(target["hp"])<=0:
+		story.on_defeat(int(target["monster_id"]));campaign.defeat(target)
+		var session=network_session.get_ref() if network_session!=null else null
+		if coop_active and session!=null and session.active() and session.api.is_server() and session.world!=self:
+			session.world.story.on_defeat(int(target["monster_id"]));session.world.campaign.defeat(target)
 
 func receive_damage(amount: int,attacker: Dictionary={},psychic: bool=false,direct: bool=false) -> void:
 	if amount<=0 or hp<=0:return
+	if float(attacker.get("monster_buff_time",0))>0:amount=maxi(1,amount*120/100)
+	if party.intercept(attacker,amount):return
+	if complete_combat and not direct and not psychic:amount=combat.mitigation(amount,effective_stat("power"),0)
 	if float(attacker.get("expose_time",0))>0 or float(attacker.get("curse_time",0))>0:amount=maxi(1,int(amount*.7))
 	if not direct and not psychic and not skills.active("hide").is_empty():
 		message="Hide avoided a physical attack.";return
@@ -447,6 +481,7 @@ func receive_damage(amount: int,attacker: Dictionary={},psychic: bool=false,dire
 		skills.ailments.erase("sleep");skills.control_grace=2.0
 	var lost: int=mini(hp,amount)
 	hp=maxi(0,hp-amount)
+	if hp==0 and coop_active:message="FALLEN · Ask an ally to resurrect you, or JOURNEY → LAN CO-OP → RESPAWN."
 	danger=mini(max_danger(),danger+(amount*100/70 if not skills.active("purity").is_empty() else amount))
 	if not direct and lost>0:
 		if not skills.active("damned_armor").is_empty() and enemies.has(attacker) and bool(attacker.get("alive",false)):damage_enemy(attacker,lost/2)
@@ -463,7 +498,7 @@ func heal() -> bool:
 		return false
 	potions -= 1
 	mana = mini(max_mana(), mana + 25)
-	hp = mini(max_hp(), hp + 45)
+	hp = mini(max_hp(), hp + (maxi(45,max_hp()*3/10) if complete_combat else 45))
 	message = "Health restored · %d heals remain" % potions
 	return true
 
@@ -488,18 +523,26 @@ func restore_map_state(state: Dictionary) -> void:
 	var previous: Variant = state.get("enemies", [])
 	var away: float=maxf(0,Time.get_unix_time_from_system()-float(state.get("respawn_saved_at",Time.get_unix_time_from_system())))
 	if previous is Array:
-		for candidate in previous.slice(0, MAX_ENEMIES):
+		for candidate in previous.slice(0, MAX_ENEMIES+6):
 			if not candidate is Dictionary:
 				continue
 			var proposed := Vector2(float(candidate.get("x", -1)), float(candidate.get("y", -1)))
 			if not proposed.is_finite() or not can_stand(proposed):
 				continue
-			enemies.append({"monster_id": int(candidate.get("monster_id", 0)), "name": str(candidate.get("name", "")), "x": proposed.x, "y": proposed.y, "hp": clampi(int(candidate.get("hp", 36)), 0, story.encounter_hp(int(candidate.get("monster_id",0)))), "max_hp": story.encounter_hp(int(candidate.get("monster_id",0))), "cooldown": 1.0, "alive": bool(candidate.get("alive", true)), "respawn_seconds": maxf(1,float(candidate.get("respawn_seconds",60))), "respawn_timer": maxf(0,float(candidate.get("respawn_timer",60))-away), "source": candidate.get("source", {}),"home_x":float(candidate.get("home_x",proposed.x)),"home_y":float(candidate.get("home_y",proposed.y))})
+			enemies.append({"monster_id": int(candidate.get("monster_id", 0)), "name": str(candidate.get("name", "")), "x": proposed.x, "y": proposed.y, "hp": clampi(int(candidate.get("hp", 36)), 0, enemy_maximum(candidate)), "max_hp": enemy_maximum(candidate), "cooldown": 1.0, "alive": bool(candidate.get("alive", true)), "respawn_seconds": maxf(1,float(candidate.get("respawn_seconds",60))), "respawn_timer": maxf(0,float(candidate.get("respawn_timer",60))-away), "source": candidate.get("source", {}),"home_x":float(candidate.get("home_x",proposed.x)),"home_y":float(candidate.get("home_y",proposed.y))})
 
 			var restored_enemy: Dictionary=enemies[-1]
+			var stolen: Variant=candidate.get("stolen",{})
+			if stolen is Dictionary:
+				var valid_stolen: Dictionary={}
+				for key in stolen:
+					if item_metadata.has(str(key)) and valid_number(stolen[key]) and int(stolen[key])>0:valid_stolen[str(key)]=mini(10000,int(stolen[key]))
+				restored_enemy["stolen"]=valid_stolen
+			for key in ["campaign_id","summon_count","healing_count","scaled_encounter","summoned","starter"]:
+				if valid_number(candidate.get(key)) or candidate.get(key) is bool:restored_enemy[key]=candidate[key]
 			for pool in ["mana","stamina"]:
 				if valid_number(candidate.get(pool)):restored_enemy[pool]=maxi(0,int(candidate[pool]))
-			for timer in ["curse_time","voodoo_time"]:
+			for timer in ["curse_time","voodoo_time","stealth_time","monster_buff_time"]:
 				if valid_number(candidate.get(timer)):restored_enemy[timer]=maxf(0,float(candidate[timer])-away)
 
 	advance_respawns(0)
@@ -507,8 +550,9 @@ func restore_map_state(state: Dictionary) -> void:
 	ensure_faction_mix()
 
 func save_game(path: String = "user://progress.json") -> Error:
+	if path=="user://progress.json" and not save_path_override.is_empty():path=save_path_override
 	remember_map()
-	var record: Dictionary = {"attribute_growth_version":1,"stamina":stamina,"rest_elapsed":rest_elapsed,"progression_version":2,"danger":danger,"story":story.serialize(),"honor":honor,"skills":skills.serialize(),"roster_version":2,"player_name":player_name,"adventure_started":adventure_started,"tutorial_stage":tutorial_stage,"tutorial_kills":tutorial_kills,"visited":visited,"bank_gold":bank_gold,"version": SAVE_VERSION, "map_id": map_id, "hp": hp, "xp": xp, "level": level, "potions": potions, "defeated": defeated, "map_states": map_states, "stats":stats,"bonus_points":bonus_points,"equipment":equipment,"purchases":purchases,"facing":facing,"armor_bonus":armor_bonus,"gold":gold,"inventory":inventory,"weapon_bonus":weapon_bonus,"character_id":character_id,"mana":mana,"bounty_claimed":bounty_claimed}
+	var record: Dictionary = {"sig_gold":sig_gold,"campaign":campaign.serialize(),"complete_combat":complete_combat,"party":party.serialize(),"attribute_growth_version":1,"stamina":stamina,"rest_elapsed":rest_elapsed,"progression_version":2,"danger":danger,"story":story.serialize(),"honor":honor,"skills":skills.serialize(),"roster_version":2,"player_name":player_name,"adventure_started":adventure_started,"tutorial_stage":tutorial_stage,"tutorial_kills":tutorial_kills,"visited":visited,"bank_gold":bank_gold,"version": SAVE_VERSION, "map_id": map_id, "hp": hp, "xp": xp, "level": level, "potions": potions, "defeated": defeated, "map_states": map_states, "stats":stats,"bonus_points":bonus_points,"equipment":equipment,"purchases":purchases,"facing":facing,"armor_bonus":armor_bonus,"gold":gold,"inventory":inventory,"weapon_bonus":weapon_bonus,"character_id":character_id,"mana":mana,"bounty_claimed":bounty_claimed}
 	var temporary: String = path + ".tmp"
 	var file := FileAccess.open(temporary, FileAccess.WRITE)
 	if file == null:
@@ -535,6 +579,9 @@ func load_game(path: String = "user://progress.json") -> bool:
 	for id in saved.get("visited",[]): visited.append(int(id))
 	bank_gold=clampi(int(saved.get("bank_gold",0)),0,99999999)
 	var prior_states: Dictionary = map_states
+	sig_gold=clampi(int(saved.get("sig_gold",0)),0,2147483647) if valid_number(saved.get("sig_gold",0)) else 0
+	complete_combat=bool(saved.get("complete_combat",false))
+	party.restore(saved.get("party",{}));campaign.restore(saved.get("campaign",{}))
 	map_states = saved["map_states"]
 	if not enter_map(int(saved.get("map_id", -1)), false):
 		map_states = prior_states
@@ -685,12 +732,26 @@ func item_name(key: String) -> String:
 	return str(item_tables.get(key, "Recovered item " + key))
 
 func use_item(key: String) -> void:
+	if request_online("item",key):return
 	if int(inventory.get(key,0))<=0:
 		return
 	var item: Dictionary=item_metadata.get(key,{})
 	if item.is_empty():
 		message="This item effect has not been reconstructed yet."
 		return
+	if key=="6:67":
+		var recovered: int=0
+		for attribute in ["strength","spirit","dexterity","power"]:recovered+=maxi(0,(int(stats[attribute])-10)/stat_gain(attribute))
+		if recovered<=0:message="No allocated attributes to reset.";return
+		var old_health: int=hp;var old_mana: int=mana;var old_stats: Dictionary=stats.duplicate();var old_points: int=bonus_points;var old_gear: Dictionary=equipment.duplicate()
+		stats={"strength":10,"spirit":10,"dexterity":10,"power":10};bonus_points+=recovered;inventory[key]=int(inventory[key])-1
+		for slot in equipment.keys():
+			var item_stats: Dictionary=item_metadata.get(equipment[slot],{})
+			for attribute in stats:
+				if int(item_stats.get("required_"+attribute,0))>10:equipment.erase(slot);break
+		refresh_equipment()
+		if save_game()!=OK:stats=old_stats;bonus_points=old_points;equipment=old_gear;inventory[key]=int(inventory[key])+1;refresh_equipment();hp=old_health;mana=old_mana;message="Could not save attribute reset.";return
+		message="Attributes reset. %d points returned." % recovered;return
 	if key.begins_with("4:"):
 		var health: int=int(item.get("hp",0))
 		var energy: int=int(item.get("mp",0))
@@ -825,6 +886,7 @@ func npc_has_shop(npc: Dictionary) -> bool:
 	return false
 
 func interact_with(npc: Dictionary) -> bool:
+	if request_online("npc",{"map":npc.get("map_id",-1),"event":npc.get("event_id",-1),"name":npc.get("name","")}):return true
 	shop_available=false
 	if int(npc.get("map_id",-1))!=map_id or npc_position(npc).distance_to(player)>=8:
 		message="Move closer to speak with this person."
@@ -849,6 +911,7 @@ func buy_heal() -> void:
 		save_game()
 
 func sell_item(key: String) -> void:
+	if request_online("sell",key):return
 	if key=="5:1" and story.active():message="Keep the Microfilm for the Archeologist.";return
 	if shop_available and int(inventory.get(key,0)) > 0:
 		inventory[key] -= 1
@@ -881,6 +944,7 @@ func clear_sight(start: Vector2, finish: Vector2) -> bool:
 	return true
 
 func use_exit() -> bool:
+	if request_online("travel",-1):return false
 	var pixel: Vector2 = player*Vector2(48,24)
 	for exit in exits.get(str(map_id),[]):
 		var rect := Rect2(float(exit["left"]),float(exit["top"]),float(exit["right"])-float(exit["left"]),float(exit["bottom"])-float(exit["top"]))
@@ -918,6 +982,7 @@ func zone_stock() -> Array:
 	return stock
 
 func buy_stock(purchase_key: String) -> bool:
+	if request_online("buy",purchase_key):return true
 	for item in zone_stock():
 		if item["purchase_key"]!=purchase_key:
 			continue
@@ -1008,6 +1073,7 @@ func recover(delta: float) -> void:
 		elif mana<max_mana():mana=mini(max_mana(),mana+max_mana()/10)
 
 func allocate_stats(changes: Dictionary, path: String="user://progress.json") -> bool:
+	if request_online("stats",changes):return true
 	var total: int=0
 	for key in changes:
 		var value: Variant=changes[key]
@@ -1039,10 +1105,11 @@ func create_character(chosen_name: String, hero: int, path: String="user://progr
 	for index in range(clean.length()):
 		if clean.unicode_at(index)<32: return false
 	# Preserve the previous save/backup until the new adventure is saved atomically.
+	party.restore({});campaign.restore({});complete_combat=false
 	map_states={};inventory={"4:1":5,"5:93":1,"5:94":1,"5:95":1};equipment={};purchases={}
 	stats={"strength":10,"spirit":10,"dexterity":10,"power":10}
 	honor=0;danger=0;stamina=2000;rest_elapsed=0;run_steps=0;run_distance=0;skills.reset();story.reset()
-	bonus_points=0;level=1;xp=0;gold=0;bank_gold=0;defeated=0;potions=5
+	bonus_points=0;level=1;xp=0;gold=0;sig_gold=0;bank_gold=0;defeated=0;potions=5
 	weapon_bonus=0;armor_bonus=0;bounty_claimed=false;character_id=hero;player_name=clean
 	adventure_started=true;tutorial_stage=0;tutorial_kills=0;visited=[]
 	if not enter_map(9,false): return false
@@ -1051,6 +1118,7 @@ func create_character(chosen_name: String, hero: int, path: String="user://progr
 	return save_game(path)==OK
 
 func objective() -> String:
+	if campaign.stage>=0:return campaign.title()+(". Return to Kasham to report." if campaign.report else "")
 	if story.active():return story.objective()
 	if not adventure_started: return "Explore recovered maps. Start a new character from MENU for the guided adventure."
 	return ["Speak with the Doctor here at Street 1 Hospital.","Visit Street 1 using TRAVEL, then head to the Backyard.","Backyard training: defeat 3 creatures (%d/3)." % tutorial_kills,"Return to Street 1 Hospital and speak with the Doctor.","Training complete. Explore towns, improve equipment and follow recovered exits."][tutorial_stage]
@@ -1112,10 +1180,14 @@ func travel_options() -> Array:
 			if not options.has(id): options.append(id)
 	for id in story.destinations():
 		if not options.has(id):options.append(id)
+	if campaign.stage>=0 and not campaign.completed:
+		for id in [75,campaign.destination()]:
+			if not options.has(id):options.append(id)
 	options.sort()
 	return options
 
 func travel_to(id: int) -> bool:
+	if request_online("travel",id):return false
 	if not travel_options().has(id):
 		message="Reach this destination through a connected exit first."
 		return false
@@ -1137,16 +1209,19 @@ func travel_to(id: int) -> bool:
 			if int(npc["map_id"])==id:
 				var point: Vector2=npc_position(npc)+Vector2(3,2)
 				player=find_start([int(point.x),int(point.y)]);break
+	story.prepare_solo_instance();campaign.ensure_encounter();party.regroup()
 	arrival_grace=5.0
 	message="Arrived at "+map_name()+". "+objective()
 	save_game()
 	return true
 
 func deposit_gold() -> bool:
+	if request_online("deposit"):return true
 	if map_id!=4 or gold<=0: return false
 	bank_gold+=gold;gold=0;save_game();return true
 
 func withdraw_gold() -> bool:
+	if request_online("withdraw"):return true
 	if map_id!=4 or bank_gold<=0: return false
 	gold+=bank_gold;bank_gold=0;save_game();return true
 
@@ -1164,7 +1239,10 @@ func advance_respawns(seconds: float) -> void:
 		if float(enemy["respawn_timer"])>0:continue
 		var home:=Vector2(float(enemy.get("home_x",enemy["x"])),float(enemy.get("home_y",enemy["y"])))
 		if not home.is_finite() or not can_stand(home):home=find_start([int(home.x),int(home.y)])
-		enemy.erase("mana");enemy.erase("stamina")
+		if bool(enemy.get("starter",false)) and uses_starter_encounter():
+			var id: int=7 if level<8 else 1 if level<15 else 2 if level<30 else 3
+			enemy["monster_id"]=id;enemy["max_hp"]=mini(combat.monster_health(self,id),maxi(50,basic_attack_power()*(3+level/10)))
+		enemy.erase("mana");enemy.erase("stamina");enemy.erase("summon_count");enemy.erase("healing_count")
 		enemy["x"]=home.x;enemy["y"]=home.y;enemy["hp"]=int(enemy.get("max_hp",36));enemy["alive"]=true;enemy["cooldown"]=1.4
 		skills.clear_enemy_status(enemy)
 
@@ -1188,14 +1266,19 @@ func allowed_heroes(key: String) -> String:
 	return ", ".join(names)
 
 func quick_food() -> bool:
+	if request_online("quick_food"):return true
+	var selected: String="";var best: int=0
 	for key in inventory:
 		if not str(key).begins_with("4:") or int(inventory[key])<=0:continue
 		var item: Dictionary=item_metadata.get(key,{})
-		if (hp<max_hp() and int(item.get("hp",0))>0) or (mana<max_mana() and int(item.get("mp",0))>0):use_item(key);return true
+		var value: int=mini(max_hp()-hp,int(item.get("hp",0)))+mini(max_mana()-mana,int(item.get("mp",0)))
+		if value>best:selected=key;best=value
+	if not selected.is_empty():use_item(selected);return true
 	message="No suitable food or drink available. Check your bag.";return false
 
 
 func ensure_respawn_mix() -> void:
+	if uses_starter_encounter():return
 	if enemies.is_empty():
 		spawn_enemies();return
 	for enemy in enemies:
@@ -1214,6 +1297,8 @@ func monster_reputation(id: int) -> int:
 	return int(monster_metadata.get(id,{}).get("reputation",0))
 
 func honor_cap() -> int:
+	if campaign.stage>=3:return 1000
+	if campaign.stage>=1:return 500
 	if story.has(64):return 400
 	if story.has(8):return 300
 	if story.has(2):return 200
@@ -1233,6 +1318,7 @@ func expected_honor(id: int) -> int:
 	return honor_after_kill(honor,monster_reputation(id))-honor
 
 func ensure_faction_mix() -> void:
+	if uses_starter_encounter():return
 	var signs: Array=[]
 	for enemy in enemies:
 		var faction: int=signi(monster_reputation(int(enemy["monster_id"])))
@@ -1254,11 +1340,12 @@ func server_hero(hero: int=-1) -> int:
 	# Original server/CHR/eligibility order differs from the CTF display roster.
 	return 7 if chosen==6 else 6 if chosen==7 else chosen
 
-func drop_loot(key: String,location: Vector2) -> void:
+func drop_loot(key: String,location: Vector2,quantity: int=1) -> void:
+	quantity=clampi(quantity,1,100000)
 	if not item_metadata.has(key) or ground_loot.size()>=128:
-		inventory[key]=int(inventory.get(key,0))+1
+		inventory[key]=int(inventory.get(key,0))+quantity
 		return
-	ground_loot.append({"key":key,"x":location.x,"y":location.y,"count":1})
+	ground_loot.append({"key":key,"x":location.x,"y":location.y,"count":quantity})
 	collect_loot()
 
 func collect_loot() -> void:
@@ -1277,3 +1364,82 @@ func basic_attack_power() -> int:
 
 func attack_power_for(strength: int) -> int:
 	return 12+weapon_bonus+(level-1)*2+maxi(0,rules.strength_attack(strength)-rules.strength_attack(10))
+
+func enemy_maximum(enemy: Dictionary) -> int:
+	if complete_combat and (valid_number(enemy.get("campaign_id")) or valid_number(enemy.get("scaled_encounter")) or bool(enemy.get("starter",false))):
+		return clampi(int(enemy.get("max_hp",300)),1,1000000000)
+	return story.encounter_hp(int(enemy.get("monster_id",0)))
+
+func set_combat_mode(enabled: bool) -> void:
+	if enabled==complete_combat:return
+	remember_map();complete_combat=enabled
+	var original_map: int=map_id
+	for key in map_states:
+		map_id=int(key)
+		for enemy in map_states[key].get("enemies",[]):convert_enemy_health(enemy)
+	map_id=original_map
+	for enemy in enemies:convert_enemy_health(enemy)
+	if uses_starter_encounter():enemies=[];spawn_starter_encounter()
+
+func convert_enemy_health(enemy: Dictionary) -> void:
+	var old: int=maxi(1,int(enemy.get("max_hp",36)))
+	var maximum: int=enemy_maximum(enemy)
+	var health: int=clampi(roundi(float(enemy.get("hp",old))*maximum/old),0,maximum)
+	if bool(enemy.get("alive",false)):health=maxi(1,health)
+	enemy["hp"]=health;enemy["max_hp"]=maximum
+
+func spell_attack_power() -> int:
+	return 12+(level-1)*2+maxi(0,rules.strength_attack(effective_stat("spirit"))-rules.strength_attack(10))
+
+func request_online(command: String,payload: Variant=null) -> bool:
+	var session=network_session.get_ref() if network_session!=null else null
+	if session==null or not session.is_client():return false
+	session.command.rpc_id(1,command,payload)
+	message="Request sent to host."
+	return true
+
+func combat_target(enemy: Dictionary):
+	if not coop_active:return self
+	var session=network_session.get_ref() if network_session!=null else null
+	if session==null or not session.active() or not session.api.is_server():return self
+	var origin:=Vector2(enemy["x"],enemy["y"])
+	var selected=self
+	var best: float=origin.distance_squared_to(player) if hp>0 and skills.active("disguise").is_empty() else INF
+	for other in session.avatars.values():
+		if other.hp<=0 or other.map_id!=map_id or not other.skills.active("disguise").is_empty():continue
+		var distance: float=origin.distance_squared_to(other.player)
+		if distance<best:selected=other;best=distance
+	return selected
+
+func grant_source_drop(drop: Dictionary,location: Vector2) -> void:
+	var quantity: int=clampi(int(drop.get("count",1)),1,2147483647)
+	if int(drop.get("kind",0))==5 and int(drop.get("index",-1))==0:gold=mini(2147483647,gold+quantity)
+	elif int(drop.get("kind",0))==5 and int(drop.get("index",-1))==2:sig_gold=mini(2147483647,sig_gold+quantity)
+	else:drop_loot("%d:%d" % [drop.get("kind",0),drop.get("index",0)],location,mini(100000,quantity))
+
+func exchange_sig_gold() -> bool:
+	if request_online("exchange"):return true
+	var banker: Dictionary=nearest_npc()
+	if str(banker.get("name","")).trim_prefix("+")!="BankClerk" or sig_gold<=0:return false
+	gold=mini(2147483647,gold+sig_gold);sig_gold=0;save_game();message="Signus credits exchanged at 1:1 (reconstructed economy).";return true
+
+func uses_starter_encounter() -> bool:return complete_combat and adventure_started and map_id==0 and level<50
+
+func spawn_starter_encounter() -> void:
+	# The surviving MOP pack's Backyard contains modified high-tier event mobs.
+	# Rebuild a bounded solo training population from the original weak records.
+	var id: int=7 if level<8 else 1 if level<15 else 2 if level<30 else 3
+	for index in range(3):
+		var location: Vector2=find_start([int(player.x)-3-index*2,int(player.y)+3*(index-1)])
+		if navigation!=null and navigation.get_id_path(Vector2i(player.floor()),Vector2i(location.floor())).is_empty():location=player
+		var maximum: int=mini(combat.monster_health(self,id),maxi(50,basic_attack_power()*(3+level/10)))
+		enemies.append({"monster_id":id,"name":"Training Creature","starter":true,"x":location.x,"y":location.y,"home_x":location.x,"home_y":location.y,"hp":maximum,"max_hp":maximum,"alive":true,"cooldown":1.4,"respawn_seconds":8,"respawn_timer":0.0})
+
+func reward_nearby_players(experience: int,location: Vector2) -> void:
+	var session=network_session.get_ref() if network_session!=null else null
+	if not coop_active or session==null or not session.active() or not session.api.is_server():return
+	var players: Array=session.avatars.values();players.append(session.world)
+	for other in players:
+		if other==self or other.hp<=0 or other.map_id!=map_id or other.player.distance_to(location)>15:continue
+		var earned: int=other.award_experience(experience)
+		other.message="Party victory · +%d XP" % earned
