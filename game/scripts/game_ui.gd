@@ -25,7 +25,7 @@ var skill_assign_buttons: Array=[]
 var skill_cast_button: Button
 var effect_text: Label
 const ATTRIBUTES=["strength","spirit","dexterity","power"]
-const DESCRIPTIONS={"strength":"Equipment requirements", "spirit":"Maximum mana and equipment", "dexterity":"Equipment requirements", "power":"Maximum health and equipment"}
+const DESCRIPTIONS={"strength":"Attack power and equipment requirements", "spirit":"Maximum mana and equipment", "dexterity":"Equipment requirements", "power":"Maximum health and equipment"}
 
 func setup(owner_scene: Node) -> void:
 	scene=owner_scene
@@ -167,6 +167,7 @@ func render_stats() -> void:
 		var minus:=button("−",func():change_stat(key,-1),row);minus.custom_minimum_size.x=72;minus.disabled=int(draft[attribute])==0;stat_minus[attribute]=minus
 		var plus:=button("+",func():change_stat(key,1),row);plus.custom_minimum_size.x=72;plus.disabled=spent>=scene.world.bonus_points;stat_plus[attribute]=plus
 	label("HEALTH %d → %d     MANA %d → %d" % [scene.world.max_hp(),scene.world.hp_for(scene.world.preview_stat("power",draft)),scene.world.max_mana(),scene.world.mana_for(scene.world.preview_stat("spirit",draft))],rows,28)
+	label("ATTACK POWER %d → %d" % [scene.world.basic_attack_power(),scene.world.attack_power_for(scene.world.preview_stat("strength",draft))],rows,28)
 	label("Level up to earn points. HP/mana change at thresholds. Apply to confirm.",rows,24)
 	var actions:=HBoxContainer.new();content.add_child(actions)
 	apply_button=button("APPLY POINTS",func():

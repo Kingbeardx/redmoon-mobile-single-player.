@@ -219,7 +219,7 @@ func cast(id: int,destination: Vector2=Vector2(INF,INF)) -> bool:
 		# not recovered. Apply the original skill's percentage and actual range.
 		amount=maxi(1,int((12+world.weapon_bonus+(world.level-1)*2)*float(row["multiplier"])/100.0))
 		if mode=="danger_attack":amount=maxi(1,world.rules.special_attack(world.level)*int(row["multiplier"])/100)
-		elif not str(row["weapon"]).is_empty():amount=int(amount*physical_factor())
+		elif not str(row["weapon"]).is_empty():amount=maxi(1,int(world.basic_attack_power()*float(row["multiplier"])/100.0*physical_factor()))
 		amount=maxi(1,int(amount*factor("attack_up")))
 		for enemy in targets:
 			var before_hp: int=int(enemy["hp"])

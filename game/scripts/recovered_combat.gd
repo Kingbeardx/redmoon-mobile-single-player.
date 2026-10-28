@@ -21,3 +21,16 @@ static func danger_max(power: int) -> int:
 
 static func special_attack(level: int) -> int:return 50+((level*level)&0xffffffff)/6
 
+
+static func strength_attack(strength: int) -> int:
+	# InitializeAttack 0x4348c0. The original unsigned multiply intermediates
+	# wrap at 32 bits; division truncates at each step.
+	var value: int=clampi(strength,0,10000000)
+	if value<1000:return 8-int(value*-.28)
+	if value<=10000:
+		var tenth: int=value/10
+		return 10+((tenth*tenth*tenth)&0xffffffff)/3500
+	if value<13000:
+		var tenth: int=value/10
+		return 10+(((value/100)*tenth*tenth)&0xffffffff)/350
+	return (145*value-0x132f3c)&0xffffffff

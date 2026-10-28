@@ -206,3 +206,11 @@ hits, buff persistence, ground-loot persistence, malformed loot rejection and
 real touch-triggered Psycho Kinesis. The v16-loot.png render was inspected.
 Android package/signature/resource verification is recorded in v16-build.json.
 No physical Android device or iOS build was available.
+
+## v0.17 attack growth
+
+724 Godot checks passed, including 11 new source boundary and actual attack/weapon
+skill checks. The stat/inventory UI regression passed after adding the attack
+preview. All 60 Python and four recovered-rule checks passed. The Android export
+completed; signature/resource verification is recorded in v17-build.json. Device
+and iOS validation remain unavailable. Full original combat remains incomplete.

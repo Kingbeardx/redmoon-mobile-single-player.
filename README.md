@@ -392,3 +392,9 @@ new effects retain the original class/level/honor/cost gates and icons.
 
 See [evidence and adaptations](docs/offline-restoration-v16.md). Full original
 combat, later story, six player entries and multiplayer remain unfinished.
+
+## v0.17 attack growth
+
+Strength increases basic attacks and weapon skills using the recovered native
+piecewise attack component. Character stats preview attack power before spending
+points. See [formulas and limits](docs/combat-growth-v17.md).

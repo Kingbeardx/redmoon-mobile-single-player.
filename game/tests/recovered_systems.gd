@@ -53,7 +53,7 @@ func _initialize() -> void:
 	arena(w);var poisoner: Dictionary=enemy(w,11,10.5);check(w.monster_skills.cast(poisoner,190) and w.skills.ailments.has("poison"),"original poison monster entry casts through ordinary AI skill system")
 	prepare(w,47);var hp_max: int=w.max_hp();w.skills.cast(47)
 	check(w.effective_stat("power")==150 and w.max_hp()<hp_max and w.hp<=w.max_hp(),"Berserker halves base Power and clamps reduced HP")
-	first=enemy(w,11,10.5);w.attack_cooldown=0;w.attack();check(first["hp"]==100000-2*(12+(w.level-1)*2),"Berserker doubles actual basic attacks")
+	first=enemy(w,11,10.5);w.attack_cooldown=0;w.attack();check(first["hp"]==100000-2*w.basic_attack_power(),"Berserker doubles actual basic attacks")
 	w.skills.tick(800);check(w.effective_stat("power")==300 and w.hp<w.max_hp(),"expiry restores capacity without free healing")
 	for id in [18,75]:
 		prepare(w,id);w.skills.cast(id);check(w.movement_dexterity()==3850 and w.effective_stat("dexterity")==100,"nimble Spirit/4 contribution does not bypass equipment requirements %d" % id)

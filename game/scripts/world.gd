@@ -389,7 +389,7 @@ func attack() -> bool:
 	facing=facing_for(player.direction_to(Vector2(target["x"],target["y"])))
 	start_attack_animation(skills.basic_attack_delay())
 	skills.break_disguise()
-	var damage: int=maxi(1,int((12+weapon_bonus+(level-1)*2)*skills.factor("attack_up")*skills.physical_factor()))
+	var damage: int=maxi(1,int(basic_attack_power()*skills.factor("attack_up")*skills.physical_factor()))
 	damage_enemy(target,damage)
 	skills.secondary_hits(target,damage)
 	return true
@@ -1269,3 +1269,11 @@ func collect_loot() -> void:
 		var key: String=drop["key"];inventory[key]=int(inventory.get(key,0))+int(drop["count"])
 		ground_loot.remove_at(index)
 		message="Picked up "+item_name(key)
+
+func basic_attack_power() -> int:
+	# Preserve existing offline level/weapon balance while admitting the native
+	# Strength growth above the starting-stat baseline. Not a full combat port.
+	return attack_power_for(effective_stat("strength"))
+
+func attack_power_for(strength: int) -> int:
+	return 12+weapon_bonus+(level-1)*2+maxi(0,rules.strength_attack(strength)-rules.strength_attack(10))
